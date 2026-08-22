@@ -88,7 +88,7 @@ See [here for details on batch](https://docs.metaflow.org/scaling/remote-tasks/a
 Each step executed on batch - either from local or as part of a stepfunctions
 execution - should result in (at least) one AWS Batch job:
 
-![Submitted batch jobs](image-batch-jobs.png)
+![Submitted batch jobs](image-1.png)
 
 Each `... step-functions create` invocation should create a state machine
 definition (version):
