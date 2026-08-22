@@ -1,0 +1,18 @@
+Current stack outputs (16):
+    OUTPUT                         VALUE
+    batch_compute_env_arns         ["arn:aws:batch:eu-west-1:743582000746:compute-environment/metaflow-aws-ec2-cpu-ce","arn:aws:batch:eu-west-1:743582000746:compute-environment/metaflow-aws-ec2-gpu-ce"]
+    batch_job_queue_arns           ["arn:aws:batch:eu-west-1:743582000746:job-queue/metaflow-aws-fargate-queue","arn:aws:batch:eu-west-1:743582000746:job-queue/metaflow-aws-ec2-queue"]
+    batch_job_role_arn             arn:aws:iam::743582000746:role/metaflow-aws-batch-job-role-a7e89c4
+    datastore_s3_bucket            s3://metaflow-aws-datastore-1a04145
+    ecs_exeuction_role_arn         arn:aws:iam::743582000746:role/metaflow-aws-ecs-execution-role-2bf060f
+    ecs_metadata_task_role_arn     arn:aws:iam::743582000746:role/metaflow-aws-metadata-task-role-8560d6b
+    ecs_ui_task_role_arn           arn:aws:iam::743582000746:role/metaflow-aws-ui-task-role-ef0ea8d
+    events_bridge_sfn_role_arn     arn:aws:iam::743582000746:role/metaflow-aws-events-sfn-access-role-3e69eb5
+    load_balancer_url              http://metaflow-aws-alb-49a1457-1441231086.eu-west-1.elb.amazonaws.com
+    metadata_service_url_external  http://metaflow-aws-alb-49a1457-1441231086.eu-west-1.elb.amazonaws.com:8080
+    metadata_service_url_internal  http://metadata.metaflow.local:8080
+    rds_endpoint                   metaflow-aws-db2362d23.c1cyu4q20nag.eu-west-1.rds.amazonaws.com:5432
+    rds_secret_arn                 arn:aws:secretsmanager:eu-west-1:743582000746:secret:metaflow-aws-db-secret-c5678ec-YqvvYj
+    sfn_dynamodb_table             metaflow-aws-sfn-state-10164cf
+    sfn_role_arn                   arn:aws:iam::743582000746:role/metaflow-aws-sfn-role-e034c69
+    ui_url_external                http://metaflow-aws-alb-49a1457-1441231086.eu-west-1.elb.amazonaws.com:8083

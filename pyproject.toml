@@ -1,0 +1,13 @@
+[project]
+name = "metaflow-aws"
+version = "0.1.0"
+description = "A Python project"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.43.78",
+    "metaflow>=2.19.38",
+    "pip>=26.2.1",
+    "pulumi>=3.130.0",
+    "pulumi-aws>=6.50.0",
+    "pulumi-random>=4.16.0",
+]
