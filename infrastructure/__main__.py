@@ -939,6 +939,7 @@ batch_ec2_instance_profile = aws.iam.InstanceProfile(
     role=batch_e2_service_role.name,
 )
 
+batch_queue_names = []
 batch_queue_arns = []
 
 for batch_queue_config in batch_config['queues']:
@@ -978,18 +979,16 @@ for batch_queue_config in batch_config['queues']:
         ],
         tags=tags,
     )
+    batch_queue_names.append(batch_queue.name)
     batch_queue_arns.append(batch_queue.arn)
 
 # ---------------------------------------------------------------------------
 # Outputs — feed these into your local `metaflow config` / env vars
 # ---------------------------------------------------------------------------
-
 if use_load_balancer:
-    pulumi.export("load_balancer_url", pulumi.Output.concat("http://", shared_alb.dns_name))
-    pulumi.export(
-        "metadata_service_url_external", shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
-    )
-    pulumi.export("ui_url_external", shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(ui_config['port'])}"))
+    load_balancer_url = pulumi.Output.concat("http://", shared_alb.dns_name)
+    metadata_external_url = shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
+    ui_external_url = shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
 else:
     pulumi.export(
         "dev_mode_note",
@@ -998,9 +997,15 @@ else:
         "aws ecs describe-tasks / describe-network-interfaces, since Fargate "
         "public IPs are not static across task replacements.",
     )
-    pulumi.export("load_balancer_url", "")
+    load_balancer_url = ""
+    metadata_external_url = ""
+    ui_external_url = ""
 
-pulumi.export("metadata_service_url_internal",metadata_internal_url)
+
+# detailed stack level outputs
+pulumi.export("ui_external_url",ui_external_url)
+pulumi.export("metadata_service_external_url",metadata_external_url)
+pulumi.export("metadata_service_internal_url",metadata_internal_url)
 pulumi.export("datastore_s3_bucket", datastore_bucket.bucket.apply(lambda b: f"s3://{b}"))
 pulumi.export("ecs_exeuction_role_arn", ecs_execution_role.arn)
 pulumi.export("ecs_metadata_task_role_arn", metadata_task_role.arn)
@@ -1008,9 +1013,40 @@ pulumi.export("ecs_ui_task_role_arn", ui_task_role.arn)
 pulumi.export("batch_job_role_arn", batch_job_role.arn)
 pulumi.export("batch_compute_env_arns", batch_compute_env_arns)
 pulumi.export("batch_job_queue_arns", batch_queue_arns)
+pulumi.export("batch_job_queue_names", batch_queue_names)
+pulumi.export("batch_default_job_queue_name", batch_queue_names[0])
 pulumi.export("sfn_role_arn", sfn_role.arn)
 pulumi.export("events_bridge_sfn_role_arn", events_sfn_role.arn)
 pulumi.export("sfn_dynamodb_table", sfn_state_table.name)
 pulumi.export("rds_endpoint", db_instance.endpoint)
 pulumi.export("rds_secret_arn", db_secret.arn)
 
+# metaflow config output
+metaflow_config = pulumi.Output.all(
+    batch_job_queue_name=batch_queue_names[0],
+    datastore_bucket=datastore_bucket.bucket,
+    batch_job_role_arn=batch_job_role.arn,
+    ecs_execution_role_arn=ecs_execution_role.arn,
+    events_sfn_role_arn=events_sfn_role.arn,
+    metadata_external_url=metadata_external_url,
+    metadata_internal_url=metadata_internal_url,
+    sfn_dynamodb_table=sfn_state_table.name,
+    sfn_role_arn=sfn_role.arn,
+    
+).apply(lambda x: {
+    "METAFLOW_BATCH_CONTAINER_REGISTRY": "docker.io",
+    "METAFLOW_BATCH_JOB_QUEUE": x["batch_job_queue_name"],
+    "METAFLOW_DATASTORE_SYSROOT_S3": f"s3://{x['datastore_bucket']}",
+    "METAFLOW_DATATOOLS_S3ROOT": f"s3://{x['datastore_bucket']}/data",
+    "METAFLOW_DEFAULT_DATASTORE": "s3",
+    "METAFLOW_DEFAULT_METADATA": "service",
+    "METAFLOW_ECS_S3_ACCESS_IAM_ROLE": x["batch_job_role_arn"],
+    "METAFLOW_ECS_FARGATE_EXECUTION_ROLE": x["ecs_execution_role_arn"],
+    "METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE": x["events_sfn_role_arn"],
+    "METAFLOW_SERVICE_URL": x["metadata_external_url"],
+    "METAFLOW_SERVICE_INTERNAL_URL": x["metadata_internal_url"],
+    "METAFLOW_SFN_DYNAMO_DB_TABLE": x["sfn_dynamodb_table"],
+    "METAFLOW_SFN_IAM_ROLE": x["sfn_role_arn"],
+})
+
+pulumi.export("metaflow_config", metaflow_config)
