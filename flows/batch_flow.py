@@ -1,6 +1,6 @@
 from metaflow import FlowSpec, step, batch, environment, resources
 # token: basicbatchflow-0-drkv
-class BasicBatchFlow(FlowSpec):
+class BatchFlow(FlowSpec):
 
     @step
     def start(self):
@@ -93,4 +93,4 @@ class BasicBatchFlow(FlowSpec):
         print("done")
 
 if __name__ == "__main__":
-    BasicBatchFlow()
+    BatchFlow()

@@ -10,6 +10,6 @@
   "METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE": "arn:aws:iam::743582000746:role/metaflow-aws-events-sfn-access-role-581d4ec",
   "METAFLOW_SERVICE_INTERNAL_URL": "http://metadata.metaflow.local:8080",
   "METAFLOW_SERVICE_URL": "http://metaflow-aws-alb-e11adc7-639044483.eu-west-1.elb.amazonaws.com:8080",
-  "METAFLOW_SFN_DYNAMO_DB_TABLE": "metaflow-aws-sfn-state-1ca000f",
+  "METAFLOW_SFN_DYNAMO_DB_TABLE": "metaflow-aws-sfn-state-b1e0f4a",
   "METAFLOW_SFN_IAM_ROLE": "arn:aws:iam::743582000746:role/metaflow-aws-sfn-role-d166ae7"
 }

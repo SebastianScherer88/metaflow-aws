@@ -349,6 +349,24 @@ aws.secretsmanager.SecretVersion(
 )
 
 # ---------------------------------------------------------------------------
+# Dynamo
+# ---------------------------------------------------------------------------
+
+# DynamoDB table used by the Step Functions orchestrator to track
+# foreach / parallel-split state across a run
+sfn_state_table = aws.dynamodb.Table(
+    f"{prefix}-sfn-state",
+    billing_mode="PAY_PER_REQUEST",
+    hash_key="pathspec",
+    #range_key="foreach_stack",
+    attributes=[
+        aws.dynamodb.TableAttributeArgs(name="pathspec", type="S"),
+        #aws.dynamodb.TableAttributeArgs(name="foreach_stack", type="S"),
+    ],
+    tags=tags,
+)
+
+# ---------------------------------------------------------------------------
 # IAM
 # ---------------------------------------------------------------------------
 
@@ -462,20 +480,23 @@ batch_job_role = aws.iam.Role(
 aws.iam.RolePolicy(
     f"{prefix}-batch-job-role-s3",
     role=batch_job_role.id,
-    policy=datastore_bucket.arn.apply(
-        lambda arn: json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-                        "Resource": [arn, f"{arn}/*"],
-                    },
-                ],
-            }
-        )
-    ),
+    policy=pulumi.Output.json_dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket",],
+                    "Resource": [datastore_bucket.arn, pulumi.Output.concat(datastore_bucket.arn,"/*")],
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem"],
+                    "Resource": [sfn_state_table.arn]
+                }
+            ],
+        }
+    )
 )
 
 # Batch execution role: ECS-level role for Fargate Batch jobs (pull image, logs)
@@ -509,20 +530,6 @@ aws.iam.RolePolicyAttachment(
     f"{prefix}-batch-service-role-managed",
     role=batch_service_role.name,
     policy_arn="arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole",
-)
-
-# DynamoDB table used by the Step Functions orchestrator to track
-# foreach / parallel-split state across a run
-sfn_state_table = aws.dynamodb.Table(
-    f"{prefix}-sfn-state",
-    billing_mode="PAY_PER_REQUEST",
-    hash_key="pathspec",
-    range_key="foreach_stack",
-    attributes=[
-        aws.dynamodb.TableAttributeArgs(name="pathspec", type="S"),
-        aws.dynamodb.TableAttributeArgs(name="foreach_stack", type="S"),
-    ],
-    tags=tags,
 )
 
 # Step Functions state machine role: submits/monitors Batch jobs, needs the
