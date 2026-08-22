@@ -58,9 +58,21 @@ Then run
 pulumi stack output metaflow_config --json > ../.metaflowconfig/config.json
 ```
 
-to generate the metaflow config file required by the local metaflow client to
-point to the right AWS resources when interacting with S3, AWS Batch, 
-AWS Stepfunctions, etc
+to generate the metaflow config file. It will have the correct AWS references
+to point your local metaflow client to the AWS cloud resources you just 
+provisioned.
+
+To connect to the metaflow UI exposed through the alb, retrieve its external url
+from the stack outputs:
+
+```bash
+pulumi stack output ui_external_url
+# e.g. http://metaflow-aws-alb-e11adc7-639044483.eu-west-1.elb.amazonaws.com:8080
+```
+
+You should see something like this, minus the flows:
+
+![alt text](image.png)
 
 ## Test
 
@@ -72,3 +84,22 @@ To test the infrastructure, you can run these flows
 - by deploying to AWs Stepfunctions first and triggering them remotely.
 
 See [here for details on batch](https://docs.metaflow.org/scaling/remote-tasks/aws-batch), and here for [details on stepfunctions](https://docs.metaflow.org/production/scheduling-metaflow-flows/scheduling-with-aws-step-functions).
+
+Each step executed on batch - either from local or as part of a stepfunctions
+execution - should result in (at least) one AWS Batch job:
+
+![Submitted batch jobs](image-batch-jobs.png)
+
+Each `... step-functions create` invocation should create a state machine
+definition (version):
+
+![State machine definitions](image-2.png)
+
+And each `... step-functions trigger` invocation (or scheduled triggers of 
+state machine definitions) should create a state machine execution:
+
+![State machine execution(s) of a selected state machine definition](image-3.png)
+
+Each execution can be inspected in detail:
+
+![State machine execution in detail](image-4.png)
