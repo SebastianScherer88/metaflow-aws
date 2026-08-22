@@ -8,9 +8,15 @@ config:
     metaflow-aws:metadata-service:
         image: docker.io/netflixoss/metaflow_metadata_service:v2.5.1
         port: 8080
+        resources:
+            cpu: 512
+            memory: 1024
     metaflow-aws:ui: 
         image: docker.io/netflixoss/metaflow_metadata_service:v2.5.1
         port: 8083
+        resources:
+            cpu: 1024
+            memory: 2048 # oom'ing on 1024, leading to missing stdout/stderr
     metaflow-aws:metadata-store:
         instance-class: db.t3.micro
         username: metaflow

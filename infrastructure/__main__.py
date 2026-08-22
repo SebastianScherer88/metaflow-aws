@@ -741,8 +741,8 @@ service_registries=aws.ecs.ServiceServiceRegistriesArgs(
 metadata_task_def = aws.ecs.TaskDefinition(
     f"{prefix}-metadata-task",
     family=f"{prefix}-metadata",
-    cpu="512",
-    memory="1024",
+    cpu=metadata_service_config['resources']['cpu'],
+    memory=metadata_service_config['resources']['memory'],
     network_mode="awsvpc",
     requires_compatibilities=["FARGATE"],
     execution_role_arn=ecs_execution_role.arn,
@@ -841,8 +841,8 @@ metadata_service = aws.ecs.Service(
 ui_task_def = aws.ecs.TaskDefinition(
     f"{prefix}-ui-task",
     family=f"{prefix}-ui",
-    cpu="512",
-    memory="1024",
+    cpu=ui_config['resources']['cpu'],
+    memory=ui_config['resources']['memory'],
     network_mode="awsvpc",
     requires_compatibilities=["FARGATE"],
     execution_role_arn=ecs_execution_role.arn,
