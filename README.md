@@ -72,7 +72,7 @@ pulumi stack output ui_external_url
 
 You should see something like this, minus the flows:
 
-![alt text](image.png)
+![The metaflow UI](image/metaflow-ui.png)
 
 ## Test
 
@@ -88,18 +88,18 @@ See [here for details on batch](https://docs.metaflow.org/scaling/remote-tasks/a
 Each step executed on batch - either from local or as part of a stepfunctions
 execution - should result in (at least) one AWS Batch job:
 
-![Submitted batch jobs](image-1.png)
+![Submitted batch jobs](image/aws-batch-jobs.png)
 
 Each `... step-functions create` invocation should create a state machine
 definition (version):
 
-![State machine definitions](image-2.png)
+![State machines](image/state-machines.png)
 
 And each `... step-functions trigger` invocation (or scheduled triggers of 
 state machine definitions) should create a state machine execution:
 
-![State machine execution(s) of a selected state machine definition](image-3.png)
+![A single state machine](image/state-machine.png)
 
 Each execution can be inspected in detail:
 
-![State machine execution in detail](image-4.png)
+![State machine execution in detail](image/state-machine-execution.png)
