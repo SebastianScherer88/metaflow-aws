@@ -358,10 +358,8 @@ sfn_state_table = aws.dynamodb.Table(
     f"{prefix}-sfn-state",
     billing_mode="PAY_PER_REQUEST",
     hash_key="pathspec",
-    #range_key="foreach_stack",
     attributes=[
         aws.dynamodb.TableAttributeArgs(name="pathspec", type="S"),
-        #aws.dynamodb.TableAttributeArgs(name="foreach_stack", type="S"),
     ],
     tags=tags,
 )
@@ -441,7 +439,7 @@ aws.iam.RolePolicy(
 )
 
 # EC2 instance profile role for compute environment
-batch_e2_service_role = aws.iam.Role(
+batch_ec2_service_role = aws.iam.Role(
     f"{prefix}-batch-instance-role",
     assume_role_policy=json.dumps({
         "Version": "2012-10-17",
@@ -455,7 +453,7 @@ batch_e2_service_role = aws.iam.Role(
 
 aws.iam.RolePolicyAttachment(
     "batch-instance-role-policy",
-    role=batch_e2_service_role.name,
+    role=batch_ec2_service_role.name,
     policy_arn="arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role",
 )
 
@@ -463,18 +461,7 @@ aws.iam.RolePolicyAttachment(
 # talk to the metadata service (no IAM needed for that, it's plain HTTP)
 batch_job_role = aws.iam.Role(
     f"{prefix}-batch-job-role",
-    assume_role_policy=json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"Service": "ecs-tasks.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }
-            ],
-        }
-    ),
+    assume_role_policy=ecs_assume_role_policy,
     tags=tags,
 )
 aws.iam.RolePolicy(
@@ -826,10 +813,9 @@ metadata_service = aws.ecs.Service(
     service_registries=aws.ecs.ServiceServiceRegistriesArgs(
         registry_arn=metadata_discovery_service.arn,
         container_name="metadata-service",
-        #container_port=metadata_service_config['port']
     ),
     opts=pulumi.ResourceOptions(
-        depends_on=[metadata_listener] if use_load_balancer else []
+        depends_on=[metadata_listener, db_instance] if use_load_balancer else [db_instance]
     ),
     tags=tags,
 )
@@ -943,7 +929,7 @@ ui_service = aws.ecs.Service(
 # ---------------------------------------------------------------------------
 batch_ec2_instance_profile = aws.iam.InstanceProfile(
     "batch-instance-profile",
-    role=batch_e2_service_role.name,
+    role=batch_ec2_service_role.name,
 )
 
 batch_queue_names = []
@@ -997,13 +983,6 @@ if use_load_balancer:
     metadata_external_url = shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
     ui_external_url = shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
 else:
-    pulumi.export(
-        "dev_mode_note",
-        "No ALB deployed. ECS tasks have public IPs restricted to devAllowedCidrs. "
-        "Find current IPs with: aws ecs list-tasks --cluster <cluster> then "
-        "aws ecs describe-tasks / describe-network-interfaces, since Fargate "
-        "public IPs are not static across task replacements.",
-    )
     load_balancer_url = ""
     metadata_external_url = ""
     ui_external_url = ""
@@ -1018,6 +997,7 @@ pulumi.export("ecs_exeuction_role_arn", ecs_execution_role.arn)
 pulumi.export("ecs_metadata_task_role_arn", metadata_task_role.arn)
 pulumi.export("ecs_ui_task_role_arn", ui_task_role.arn)
 pulumi.export("batch_job_role_arn", batch_job_role.arn)
+pulumi.export("batch_execution_role_arn", batch_execution_role.arn)
 pulumi.export("batch_compute_env_arns", batch_compute_env_arns)
 pulumi.export("batch_job_queue_arns", batch_queue_arns)
 pulumi.export("batch_job_queue_names", batch_queue_names)
@@ -1025,7 +1005,7 @@ pulumi.export("batch_default_job_queue_name", batch_queue_names[0])
 pulumi.export("sfn_role_arn", sfn_role.arn)
 pulumi.export("events_bridge_sfn_role_arn", events_sfn_role.arn)
 pulumi.export("sfn_dynamodb_table", sfn_state_table.name)
-pulumi.export("rds_endpoint", db_instance.endpoint)
+pulumi.export("rds_internal_endpoint", db_instance.endpoint)
 pulumi.export("rds_secret_arn", db_secret.arn)
 
 # metaflow config output
