@@ -1,11 +1,12 @@
-from metaflow import FlowSpec, step, batch, environment, resources
+from metaflow import FlowSpec, batch, environment, resources, step
+
+
 # token: basicbatchflow-0-drkv
 class BatchFlow(FlowSpec):
-
     @step
     def start(self):
         print("hello from metaflow")
-        
+
         # 👇 This becomes an artifact
         self.message = "hello artifact world"
 
@@ -14,7 +15,7 @@ class BatchFlow(FlowSpec):
     @step
     def step_0(self):
         print("Step 0.")
-        self.next(self.step_1,self.step_2,self.step_3,self.step_4)
+        self.next(self.step_1, self.step_2, self.step_3, self.step_4)
 
     @batch()
     @step
@@ -35,10 +36,13 @@ class BatchFlow(FlowSpec):
         self.next(self.join)
 
     @resources(gpu=1)
-    @batch(queue="metaflow-aws-ec2-queue",image="pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime")
+    @batch(
+        queue="metaflow-aws-ec2-queue",
+        image="pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime",
+    )
     @environment(
         vars={
-            "PIP_BREAK_SYSTEM_PACKAGES":"1" # pytorch image doesnt allow standard pip installations
+            "PIP_BREAK_SYSTEM_PACKAGES": "1"  # pytorch image doesnt allow standard pip installations
         }
     )
     @step
@@ -46,6 +50,7 @@ class BatchFlow(FlowSpec):
         print("Running on AWS batch using the ec2 queue and GPUs.")
         # Check CUDA availability
         import torch
+
         cuda_available = torch.cuda.is_available()
         print(f"CUDA available: {cuda_available}")
 
@@ -84,13 +89,14 @@ class BatchFlow(FlowSpec):
         self.next(self.join)
 
     @step
-    def join(self,inputs):
+    def join(self, inputs):
         print("All branches completed")
         self.next(self.end)
-        
+
     @step
     def end(self):
         print("done")
+
 
 if __name__ == "__main__":
     BatchFlow()

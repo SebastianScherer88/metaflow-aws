@@ -1,14 +1,22 @@
-from metaflow import FlowSpec, step, schedule
-from metaflow.parameters import Parameter
 import datetime
+
+from metaflow import FlowSpec, schedule, step
+from metaflow.parameters import Parameter
+
 
 # token: basicflow-0-sudm
 @schedule(cron="* * * * ? *")
 class ScheduledFlow(FlowSpec):
+    greeting_name = Parameter(
+        "greeting_name", help="Who to greet.", type=str, default="Sebastian"
+    )
+    fruit_list = Parameter(
+        "fruit_list",
+        help="List of things to snack on.",
+        type=str,
+        default="apple,banana,coconut",
+    )
 
-    greeting_name = Parameter("greeting_name",help="Who to greet.",type=str,default="Sebastian")
-    fruit_list = Parameter("fruit_list",help="List of things to snack on.",type=str,default="apple,banana,coconut")
-    
     @step
     def start(self):
         # 👇 This becomes an artifact
@@ -39,6 +47,7 @@ class ScheduledFlow(FlowSpec):
     @step
     def end(self):
         print("Done greeting and snacking.")
+
 
 if __name__ == "__main__":
     ScheduledFlow()

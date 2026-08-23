@@ -1,13 +1,23 @@
-from metaflow import FlowSpec, step, batch
-from metaflow.parameters import Parameter
 import random
+
+from metaflow import FlowSpec, step
+from metaflow.parameters import Parameter
+
 
 # token: basicflow-0-sudm
 class BasicFlow(FlowSpec):
-
-    greeting_name = Parameter("greeting_name",help="Who to greet.",type=str,default="Sebastian")
-    fruit_list = Parameter("fruit_list",help="List of things to snack on.",type=str,default="apple,banana,coconut")
-    n_loops = Parameter("n_loops",help="Number of recursions for loop step",type=int,default=3)
+    greeting_name = Parameter(
+        "greeting_name", help="Who to greet.", type=str, default="Sebastian"
+    )
+    fruit_list = Parameter(
+        "fruit_list",
+        help="List of things to snack on.",
+        type=str,
+        default="apple,banana,coconut",
+    )
+    n_loops = Parameter(
+        "n_loops", help="Number of recursions for loop step", type=int, default=3
+    )
 
     @step
     def start(self):
@@ -39,9 +49,9 @@ class BasicFlow(FlowSpec):
     @step
     def flip_coin(self):
         print("Flipping a coin...")
-        self.flipped_coin = random.choice(["Heads","Tails"])
+        self.flipped_coin = random.choice(["Heads", "Tails"])
 
-        self.next({"Heads":self.heads,"Tails":self.tails},condition="flipped_coin")
+        self.next({"Heads": self.heads, "Tails": self.tails}, condition="flipped_coin")
 
     @step
     def heads(self):
@@ -56,14 +66,15 @@ class BasicFlow(FlowSpec):
     # recursion
     @step
     def loop(self):
-        self.counter = getattr(self, 'counter', 0) + 1
-        print('Loop counter is', self.counter)
+        self.counter = getattr(self, "counter", 0) + 1
+        print("Loop counter is", self.counter)
         self.again = self.counter <= self.n_loops
-        self.next({True: self.loop, False: self.end}, condition='again')
-        
+        self.next({True: self.loop, False: self.end}, condition="again")
+
     @step
     def end(self):
         print("Done greeting, snacking and looping.")
+
 
 if __name__ == "__main__":
     BasicFlow()

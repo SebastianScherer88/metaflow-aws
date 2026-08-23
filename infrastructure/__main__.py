@@ -144,7 +144,9 @@ nat_gw = aws.ec2.NatGateway(
 private_rt = aws.ec2.RouteTable(
     f"{prefix}-private-rt",
     vpc_id=vpc.id,
-    routes=[aws.ec2.RouteTableRouteArgs(cidr_block="0.0.0.0/0", nat_gateway_id=nat_gw.id)],
+    routes=[
+        aws.ec2.RouteTableRouteArgs(cidr_block="0.0.0.0/0", nat_gateway_id=nat_gw.id)
+    ],
     tags={**tags, "Name": f"{prefix}-private-rt"},
 )
 for i, subnet in enumerate(private_subnets):
@@ -156,16 +158,16 @@ for i, subnet in enumerate(private_subnets):
 # Security groups
 # ---------------------------------------------------------------------------
 
-if not security_config['alb']:
+if not security_config["alb"]:
     use_load_balancer = False
-elif security_config['alb']:
+elif security_config["alb"]:
     use_load_balancer = True
 else:
     raise ValueError(f"Invalid value for alb spec: {security_config['alb']}")
 
 # Dev fallback: comma-separated list/CIDRs of IPs allowed direct access when
 # the ALB is skipped, e.g. pulumi config set metaflow:devAllowedCidrs "1.2.3.4/32,5.6.7.8/32"
-allowed_cidrs = [c.strip() for c in (security_config['allowed_cidrs'])]
+allowed_cidrs = [c.strip() for c in (security_config["allowed_cidrs"])]
 
 if use_load_balancer:
     alb_sg = aws.ec2.SecurityGroup(
@@ -175,10 +177,18 @@ if use_load_balancer:
         ingress=(
             [
                 aws.ec2.SecurityGroupIngressArgs(
-                    protocol="tcp", from_port=ui_config['port'], to_port=ui_config['port'], cidr_blocks=allowed_cidrs, description="Metaflow UI"
+                    protocol="tcp",
+                    from_port=ui_config["port"],
+                    to_port=ui_config["port"],
+                    cidr_blocks=allowed_cidrs,
+                    description="Metaflow UI",
                 ),
                 aws.ec2.SecurityGroupIngressArgs(
-                    protocol="tcp", from_port=metadata_service_config['port'], to_port=metadata_service_config['port'], cidr_blocks=allowed_cidrs, description="Metaflow Metadata service"
+                    protocol="tcp",
+                    from_port=metadata_service_config["port"],
+                    to_port=metadata_service_config["port"],
+                    cidr_blocks=allowed_cidrs,
+                    description="Metaflow Metadata service",
                 ),
             ]
         ),
@@ -200,10 +210,16 @@ ecs_services_sg = aws.ec2.SecurityGroup(
         else [
             # dev mode: tasks get public IPs and are hit directly, no ALB in front
             aws.ec2.SecurityGroupIngressArgs(
-                protocol="tcp", from_port=metadata_service_config['port'], to_port=metadata_service_config['port'], cidr_blocks=allowed_cidrs
+                protocol="tcp",
+                from_port=metadata_service_config["port"],
+                to_port=metadata_service_config["port"],
+                cidr_blocks=allowed_cidrs,
             ),
             aws.ec2.SecurityGroupIngressArgs(
-                protocol="tcp", from_port=ui_config['port'], to_port=ui_config['port'], cidr_blocks=allowed_cidrs
+                protocol="tcp",
+                from_port=ui_config["port"],
+                to_port=ui_config["port"],
+                cidr_blocks=allowed_cidrs,
             ),
         ]
     ),
@@ -234,8 +250,8 @@ if use_load_balancer:
         type="ingress",
         security_group_id=ecs_services_sg.id,
         protocol="tcp",
-        from_port=metadata_service_config['port'],
-        to_port=metadata_service_config['port'],
+        from_port=metadata_service_config["port"],
+        to_port=metadata_service_config["port"],
         source_security_group_id=alb_sg.id,
     )
     aws.ec2.SecurityGroupRule(
@@ -243,8 +259,8 @@ if use_load_balancer:
         type="ingress",
         security_group_id=ecs_services_sg.id,
         protocol="tcp",
-        from_port=ui_config['port'],
-        to_port=ui_config['port'],
+        from_port=ui_config["port"],
+        to_port=ui_config["port"],
         source_security_group_id=alb_sg.id,
     )
 
@@ -254,8 +270,8 @@ aws.ec2.SecurityGroupRule(
     type="ingress",
     security_group_id=ecs_services_sg.id,
     protocol="tcp",
-    from_port=metadata_service_config['port'],
-    to_port=metadata_service_config['port'],
+    from_port=metadata_service_config["port"],
+    to_port=metadata_service_config["port"],
     source_security_group_id=batch_sg.id,
 )
 
@@ -275,8 +291,8 @@ aws.ec2.SecurityGroupRule(
     type="ingress",
     security_group_id=rds_sg.id,
     protocol="tcp",
-    from_port=metadata_store_config['port'],
-    to_port=metadata_store_config['port'],
+    from_port=metadata_store_config["port"],
+    to_port=metadata_store_config["port"],
     source_security_group_id=ecs_services_sg.id,
 )
 
@@ -305,9 +321,7 @@ aws.s3.BucketPublicAccessBlock(
 # RDS Postgres (metadata service backend)
 # ---------------------------------------------------------------------------
 
-db_password = random.RandomPassword(
-    f"{prefix}-db-password", length=24, special=False
-)
+db_password = random.RandomPassword(f"{prefix}-db-password", length=24, special=False)
 
 db_subnet_group = aws.rds.SubnetGroup(
     f"{prefix}-db-subnets",
@@ -318,14 +332,14 @@ db_subnet_group = aws.rds.SubnetGroup(
 db_instance = aws.rds.Instance(
     f"{prefix}-db",
     engine="postgres",
-    engine_version=metadata_store_config['engine-version'],
-    instance_class=metadata_store_config['instance-class'],
+    engine_version=metadata_store_config["engine-version"],
+    instance_class=metadata_store_config["instance-class"],
     allocated_storage=20,
     storage_encrypted=True,
-    db_name=metadata_store_config['name'],
-    username=metadata_store_config['username'],
+    db_name=metadata_store_config["name"],
+    username=metadata_store_config["username"],
     password=db_password.result,
-    port=metadata_store_config['port'],
+    port=metadata_store_config["port"],
     db_subnet_group_name=db_subnet_group.name,
     vpc_security_group_ids=[rds_sg.id],
     publicly_accessible=False,
@@ -441,14 +455,18 @@ aws.iam.RolePolicy(
 # EC2 instance profile role for compute environment
 batch_ec2_service_role = aws.iam.Role(
     f"{prefix}-batch-instance-role",
-    assume_role_policy=json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": "ec2.amazonaws.com"},
-            "Action": "sts:AssumeRole",
-        }],
-    }),
+    assume_role_policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    ),
 )
 
 aws.iam.RolePolicyAttachment(
@@ -473,22 +491,35 @@ aws.iam.RolePolicy(
             "Statement": [
                 {
                     "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket",],
-                    "Resource": [datastore_bucket.arn, pulumi.Output.concat(datastore_bucket.arn,"/*")],
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:ListBucket",
+                    ],
+                    "Resource": [
+                        datastore_bucket.arn,
+                        pulumi.Output.concat(datastore_bucket.arn, "/*"),
+                    ],
                 },
                 {
                     "Effect": "Allow",
-                    "Action": ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem"],
-                    "Resource": [sfn_state_table.arn]
-                }
+                    "Action": [
+                        "dynamodb:PutItem",
+                        "dynamodb:GetItem",
+                        "dynamodb:UpdateItem",
+                    ],
+                    "Resource": [sfn_state_table.arn],
+                },
             ],
         }
-    )
+    ),
 )
 
 # Batch execution role: ECS-level role for Fargate Batch jobs (pull image, logs)
 batch_execution_role = aws.iam.Role(
-    f"{prefix}-batch-execution-role", assume_role_policy=ecs_assume_role_policy, tags=tags
+    f"{prefix}-batch-execution-role",
+    assume_role_policy=ecs_assume_role_policy,
+    tags=tags,
 )
 aws.iam.RolePolicyAttachment(
     f"{prefix}-batch-execution-role-managed",
@@ -585,36 +616,44 @@ aws.iam.RolePolicy(
 # Step Functions state machines.
 events_sfn_role = aws.iam.Role(
     f"{prefix}-events-sfn-access-role",
-    assume_role_policy=json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {
-                "Service": "events.amazonaws.com",
-            },
-            "Action": "sts:AssumeRole",
-        }],
-    }),
+    assume_role_policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "events.amazonaws.com",
+                    },
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    ),
     tags=tags,
 )
 
 aws.iam.RolePolicy(
     f"{prefix}-events-sfn-access-policy",
     role=events_sfn_role.id,
-    policy=json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Action": [
-                "states:StartExecution",
-                "states:DescribeExecution",
-                "states:ListExecutions",
-                "states:DescribeStateMachine",
-                "states:ListStateMachines",
+    policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "states:StartExecution",
+                        "states:DescribeExecution",
+                        "states:ListExecutions",
+                        "states:DescribeStateMachine",
+                        "states:ListStateMachines",
+                    ],
+                    "Resource": "*",
+                }
             ],
-            "Resource": "*",
-        }],
-    }),
+        }
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -623,9 +662,7 @@ aws.iam.RolePolicy(
 
 cluster = aws.ecs.Cluster(f"{prefix}-cluster", tags=tags)
 
-log_group = aws.cloudwatch.LogGroup(
-    f"{prefix}-logs", retention_in_days=14, tags=tags
-)
+log_group = aws.cloudwatch.LogGroup(f"{prefix}-logs", retention_in_days=14, tags=tags)
 
 # ---------------------------------------------------------------------------
 # Shared ALB (optional) — one load balancer, two listeners: 8080 for the
@@ -645,7 +682,7 @@ if use_load_balancer:
 
     metadata_tg = aws.lb.TargetGroup(
         f"{prefix}-metadata-tg",
-        port=metadata_service_config['port'],
+        port=metadata_service_config["port"],
         protocol="HTTP",
         vpc_id=vpc.id,
         target_type="ip",
@@ -655,16 +692,18 @@ if use_load_balancer:
     metadata_listener = aws.lb.Listener(
         f"{prefix}-metadata-listener",
         load_balancer_arn=shared_alb.arn,
-        port=metadata_service_config['port'],
+        port=metadata_service_config["port"],
         protocol="HTTP",
         default_actions=[
-            aws.lb.ListenerDefaultActionArgs(type="forward", target_group_arn=metadata_tg.arn)
+            aws.lb.ListenerDefaultActionArgs(
+                type="forward", target_group_arn=metadata_tg.arn
+            )
         ],
     )
 
     ui_tg = aws.lb.TargetGroup(
         f"{prefix}-ui-tg",
-        port=ui_config['port'],
+        port=ui_config["port"],
         protocol="HTTP",
         vpc_id=vpc.id,
         target_type="ip",
@@ -674,7 +713,7 @@ if use_load_balancer:
     ui_listener = aws.lb.Listener(
         f"{prefix}-ui-listener",
         load_balancer_arn=shared_alb.arn,
-        port=ui_config['port'],
+        port=ui_config["port"],
         protocol="HTTP",
         default_actions=[
             aws.lb.ListenerDefaultActionArgs(type="forward", target_group_arn=ui_tg.arn)
@@ -726,17 +765,17 @@ metadata_internal_url = pulumi.Output.concat(
     ":",
     str(metadata_service_config["port"]),
 )
-service_registries=aws.ecs.ServiceServiceRegistriesArgs(
+service_registries = aws.ecs.ServiceServiceRegistriesArgs(
     registry_arn=metadata_discovery_service.arn,
     container_name="metadata-service",
-    container_port=metadata_service_config['port'],
+    container_port=metadata_service_config["port"],
 )
 
 metadata_task_def = aws.ecs.TaskDefinition(
     f"{prefix}-metadata-task",
     family=f"{prefix}-metadata",
-    cpu=metadata_service_config['resources']['cpu'],
-    memory=metadata_service_config['resources']['memory'],
+    cpu=metadata_service_config["resources"]["cpu"],
+    memory=metadata_service_config["resources"]["memory"],
     network_mode="awsvpc",
     requires_compatibilities=["FARGATE"],
     execution_role_arn=ecs_execution_role.arn,
@@ -745,19 +784,28 @@ metadata_task_def = aws.ecs.TaskDefinition(
         [
             {
                 "name": "metadata-service",
-                "image": metadata_service_config['image'],
+                "image": metadata_service_config["image"],
                 "essential": True,
                 "portMappings": [
-                    {"containerPort": metadata_service_config['port'], "protocol": "tcp"},
+                    {
+                        "containerPort": metadata_service_config["port"],
+                        "protocol": "tcp",
+                    },
                     # {"containerPort": 8082, "protocol": "tcp"},
                 ],
                 "environment": [
                     {"name": "MF_METADATA_DB_HOST", "value": db_instance.address},
-                    {"name": "MF_METADATA_DB_PORT", "value": db_instance.port.apply(lambda x: str(x))},
+                    {
+                        "name": "MF_METADATA_DB_PORT",
+                        "value": db_instance.port.apply(lambda x: str(x)),
+                    },
                     {"name": "MF_METADATA_DB_NAME", "value": db_instance.db_name},
-                    {"name": "MF_METADATA_PORT", "value": str(metadata_service_config['port'])},
+                    {
+                        "name": "MF_METADATA_PORT",
+                        "value": str(metadata_service_config["port"]),
+                    },
                     {"name": "MF_METADATA_HOST", "value": "0.0.0.0"},
-                    {"name": "PGSSLMODE","value": "require"},
+                    {"name": "PGSSLMODE", "value": "require"},
                     {
                         "name": "MF_METADATA_DB_SSL_MODE",
                         "value": "require",
@@ -766,11 +814,11 @@ metadata_task_def = aws.ecs.TaskDefinition(
                 "secrets": [
                     {
                         "name": "MF_METADATA_DB_USER",
-                        "valueFrom": pulumi.Output.concat(db_secret.arn,":username::"),
+                        "valueFrom": pulumi.Output.concat(db_secret.arn, ":username::"),
                     },
                     {
                         "name": "MF_METADATA_DB_PSWD",
-                        "valueFrom": pulumi.Output.concat(db_secret.arn,":password::"),
+                        "valueFrom": pulumi.Output.concat(db_secret.arn, ":password::"),
                     },
                 ],
                 "logConfiguration": {
@@ -786,7 +834,7 @@ metadata_task_def = aws.ecs.TaskDefinition(
     ),
     tags=tags,
 )
-    
+
 
 metadata_service = aws.ecs.Service(
     f"{prefix}-metadata-service",
@@ -795,7 +843,9 @@ metadata_service = aws.ecs.Service(
     desired_count=1,
     launch_type="FARGATE",
     network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-        subnets=[s.id for s in public_subnets] if not use_load_balancer else [s.id for s in private_subnets],
+        subnets=[s.id for s in public_subnets]
+        if not use_load_balancer
+        else [s.id for s in private_subnets],
         security_groups=[ecs_services_sg.id],
         assign_public_ip=not use_load_balancer,
     ),
@@ -804,7 +854,7 @@ metadata_service = aws.ecs.Service(
             aws.ecs.ServiceLoadBalancerArgs(
                 target_group_arn=metadata_tg.arn,
                 container_name="metadata-service",
-                container_port=metadata_service_config['port'],
+                container_port=metadata_service_config["port"],
             )
         ]
         if use_load_balancer
@@ -815,7 +865,9 @@ metadata_service = aws.ecs.Service(
         container_name="metadata-service",
     ),
     opts=pulumi.ResourceOptions(
-        depends_on=[metadata_listener, db_instance] if use_load_balancer else [db_instance]
+        depends_on=[metadata_listener, db_instance]
+        if use_load_balancer
+        else [db_instance]
     ),
     tags=tags,
 )
@@ -834,8 +886,8 @@ metadata_service = aws.ecs.Service(
 ui_task_def = aws.ecs.TaskDefinition(
     f"{prefix}-ui-task",
     family=f"{prefix}-ui",
-    cpu=ui_config['resources']['cpu'],
-    memory=ui_config['resources']['memory'],
+    cpu=ui_config["resources"]["cpu"],
+    memory=ui_config["resources"]["memory"],
     network_mode="awsvpc",
     requires_compatibilities=["FARGATE"],
     execution_role_arn=ecs_execution_role.arn,
@@ -844,21 +896,33 @@ ui_task_def = aws.ecs.TaskDefinition(
         [
             {
                 "name": "ui",
-                "image": ui_config['image'],
-                "command": ["/opt/latest/bin/python3", "-m", "services.ui_backend_service.ui_server"],
+                "image": ui_config["image"],
+                "command": [
+                    "/opt/latest/bin/python3",
+                    "-m",
+                    "services.ui_backend_service.ui_server",
+                ],
                 "essential": True,
-                "portMappings": [{"containerPort": ui_config['port'], "protocol": "tcp"}],
+                "portMappings": [
+                    {"containerPort": ui_config["port"], "protocol": "tcp"}
+                ],
                 "environment": [
                     {"name": "MF_METADATA_DB_HOST", "value": db_instance.address},
-                    {"name": "MF_METADATA_DB_PORT", "value": db_instance.port.apply(lambda x: str(x))},
+                    {
+                        "name": "MF_METADATA_DB_PORT",
+                        "value": db_instance.port.apply(lambda x: str(x)),
+                    },
                     {"name": "MF_METADATA_DB_NAME", "value": db_instance.db_name},
-                    {"name": "MF_UI_METADATA_PORT", "value": str(ui_config['port'])},
+                    {"name": "MF_UI_METADATA_PORT", "value": str(ui_config["port"])},
                     {"name": "MF_UI_METADATA_HOST", "value": "0.0.0.0"},
                     {"name": "UI_ENABLED", "value": "1"},
                     {"name": "FEATURE_ARTIFACT_SEARCH", "value": "1"},
                     {"name": "FEATURE_ARTIFACT_TABLE", "value": "1"},
                     {"name": "METAFLOW_DEFAULT_DATASTORE", "value": "s3"},
-                    {"name": "METAFLOW_DATASTORE_SYSROOT_S3", "value": pulumi.Output.concat("s3://",datastore_bucket.bucket)},
+                    {
+                        "name": "METAFLOW_DATASTORE_SYSROOT_S3",
+                        "value": pulumi.Output.concat("s3://", datastore_bucket.bucket),
+                    },
                     # # internal, stable address via Cloud Map:
                     # {
                     #     "name": "MF_METADATA_SERVICE_URL",
@@ -868,11 +932,11 @@ ui_task_def = aws.ecs.TaskDefinition(
                 "secrets": [
                     {
                         "name": "MF_METADATA_DB_USER",
-                        "valueFrom": pulumi.Output.concat(db_secret.arn,":username::"),
+                        "valueFrom": pulumi.Output.concat(db_secret.arn, ":username::"),
                     },
                     {
                         "name": "MF_METADATA_DB_PSWD",
-                        "valueFrom": pulumi.Output.concat(db_secret.arn,":password::"),
+                        "valueFrom": pulumi.Output.concat(db_secret.arn, ":password::"),
                     },
                 ],
                 "logConfiguration": {
@@ -896,7 +960,9 @@ ui_service = aws.ecs.Service(
     desired_count=1,
     launch_type="FARGATE",
     network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-        subnets=[s.id for s in public_subnets] if not use_load_balancer else [s.id for s in private_subnets],
+        subnets=[s.id for s in public_subnets]
+        if not use_load_balancer
+        else [s.id for s in private_subnets],
         security_groups=[ecs_services_sg.id],
         assign_public_ip=not use_load_balancer,
     ),
@@ -905,7 +971,7 @@ ui_service = aws.ecs.Service(
             aws.ecs.ServiceLoadBalancerArgs(
                 target_group_arn=ui_tg.arn,
                 container_name="ui",
-                container_port=ui_config['port'],
+                container_port=ui_config["port"],
             )
         ]
         if use_load_balancer
@@ -935,13 +1001,11 @@ batch_ec2_instance_profile = aws.iam.InstanceProfile(
 batch_queue_names = []
 batch_queue_arns = []
 
-for batch_queue_config in batch_config['queues']:
-
+for batch_queue_config in batch_config["queues"]:
     batch_compute_env_arns = []
 
-    for batch_compute_env_config in batch_queue_config['compute-environments']:
-
-        batch_compute_env_name = batch_compute_env_config.pop('name')
+    for batch_compute_env_config in batch_queue_config["compute-environments"]:
+        batch_compute_env_name = batch_compute_env_config.pop("name")
 
         batch_compute_env = aws.batch.ComputeEnvironment(
             f"{prefix}-batch-{batch_compute_env_name}",
@@ -950,7 +1014,9 @@ for batch_queue_config in batch_config['queues']:
             service_role=batch_service_role.arn,
             compute_resources=aws.batch.ComputeEnvironmentComputeResourcesArgs(
                 **batch_compute_env_config,
-                instance_role=batch_ec2_instance_profile.arn if batch_compute_env_config['type'] in ('EC2','SPOT') else None,
+                instance_role=batch_ec2_instance_profile.arn
+                if batch_compute_env_config["type"] in ("EC2", "SPOT")
+                else None,
                 subnets=[s.id for s in private_subnets],
                 security_group_ids=[batch_sg.id],
             ),
@@ -968,7 +1034,8 @@ for batch_queue_config in batch_config['queues']:
         compute_environment_orders=[
             aws.batch.JobQueueComputeEnvironmentOrderArgs(
                 order=order_index + 1, compute_environment=batch_compute_env_arn
-            ) for order_index, batch_compute_env_arn in enumerate(batch_compute_env_arns)
+            )
+            for order_index, batch_compute_env_arn in enumerate(batch_compute_env_arns)
         ],
         tags=tags,
     )
@@ -980,8 +1047,12 @@ for batch_queue_config in batch_config['queues']:
 # ---------------------------------------------------------------------------
 if use_load_balancer:
     load_balancer_url = pulumi.Output.concat("http://", shared_alb.dns_name)
-    metadata_external_url = shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
-    ui_external_url = shared_alb.dns_name.apply(lambda d: f"http://{d}:{str(metadata_service_config['port'])}")
+    metadata_external_url = shared_alb.dns_name.apply(
+        lambda d: f"http://{d}:{str(metadata_service_config['port'])}"
+    )
+    ui_external_url = shared_alb.dns_name.apply(
+        lambda d: f"http://{d}:{str(metadata_service_config['port'])}"
+    )
 else:
     load_balancer_url = ""
     metadata_external_url = ""
@@ -989,10 +1060,12 @@ else:
 
 
 # detailed stack level outputs
-pulumi.export("ui_external_url",ui_external_url)
-pulumi.export("metadata_service_external_url",metadata_external_url)
-pulumi.export("metadata_service_internal_url",metadata_internal_url)
-pulumi.export("datastore_s3_bucket", datastore_bucket.bucket.apply(lambda b: f"s3://{b}"))
+pulumi.export("ui_external_url", ui_external_url)
+pulumi.export("metadata_service_external_url", metadata_external_url)
+pulumi.export("metadata_service_internal_url", metadata_internal_url)
+pulumi.export(
+    "datastore_s3_bucket", datastore_bucket.bucket.apply(lambda b: f"s3://{b}")
+)
 pulumi.export("ecs_exeuction_role_arn", ecs_execution_role.arn)
 pulumi.export("ecs_metadata_task_role_arn", metadata_task_role.arn)
 pulumi.export("ecs_ui_task_role_arn", ui_task_role.arn)
@@ -1019,21 +1092,22 @@ metaflow_config = pulumi.Output.all(
     metadata_internal_url=metadata_internal_url,
     sfn_dynamodb_table=sfn_state_table.name,
     sfn_role_arn=sfn_role.arn,
-    
-).apply(lambda x: {
-    "METAFLOW_BATCH_CONTAINER_REGISTRY": "docker.io",
-    "METAFLOW_BATCH_JOB_QUEUE": x["batch_job_queue_name"],
-    "METAFLOW_DATASTORE_SYSROOT_S3": f"s3://{x['datastore_bucket']}",
-    "METAFLOW_DATATOOLS_S3ROOT": f"s3://{x['datastore_bucket']}/data",
-    "METAFLOW_DEFAULT_DATASTORE": "s3",
-    "METAFLOW_DEFAULT_METADATA": "service",
-    "METAFLOW_ECS_S3_ACCESS_IAM_ROLE": x["batch_job_role_arn"],
-    "METAFLOW_ECS_FARGATE_EXECUTION_ROLE": x["ecs_execution_role_arn"],
-    "METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE": x["events_sfn_role_arn"],
-    "METAFLOW_SERVICE_URL": x["metadata_external_url"],
-    "METAFLOW_SERVICE_INTERNAL_URL": x["metadata_internal_url"],
-    "METAFLOW_SFN_DYNAMO_DB_TABLE": x["sfn_dynamodb_table"],
-    "METAFLOW_SFN_IAM_ROLE": x["sfn_role_arn"],
-})
+).apply(
+    lambda x: {
+        "METAFLOW_BATCH_CONTAINER_REGISTRY": "docker.io",
+        "METAFLOW_BATCH_JOB_QUEUE": x["batch_job_queue_name"],
+        "METAFLOW_DATASTORE_SYSROOT_S3": f"s3://{x['datastore_bucket']}",
+        "METAFLOW_DATATOOLS_S3ROOT": f"s3://{x['datastore_bucket']}/data",
+        "METAFLOW_DEFAULT_DATASTORE": "s3",
+        "METAFLOW_DEFAULT_METADATA": "service",
+        "METAFLOW_ECS_S3_ACCESS_IAM_ROLE": x["batch_job_role_arn"],
+        "METAFLOW_ECS_FARGATE_EXECUTION_ROLE": x["ecs_execution_role_arn"],
+        "METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE": x["events_sfn_role_arn"],
+        "METAFLOW_SERVICE_URL": x["metadata_external_url"],
+        "METAFLOW_SERVICE_INTERNAL_URL": x["metadata_internal_url"],
+        "METAFLOW_SFN_DYNAMO_DB_TABLE": x["sfn_dynamodb_table"],
+        "METAFLOW_SFN_IAM_ROLE": x["sfn_role_arn"],
+    }
+)
 
 pulumi.export("metaflow_config", metaflow_config)
