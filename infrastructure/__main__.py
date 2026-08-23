@@ -318,7 +318,7 @@ db_subnet_group = aws.rds.SubnetGroup(
 db_instance = aws.rds.Instance(
     f"{prefix}-db",
     engine="postgres",
-    engine_version="15",
+    engine_version=metadata_store_config['engine-version'],
     instance_class=metadata_store_config['instance-class'],
     allocated_storage=20,
     storage_encrypted=True,

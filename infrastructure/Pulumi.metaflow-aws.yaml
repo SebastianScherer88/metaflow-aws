@@ -19,6 +19,7 @@ config:
             memory: 2048 # oom'ing on 1024, leading to missing stdout/stderr
     metaflow-aws:metadata-store:
         instance-class: db.t3.micro
+        engine-version: 17
         username: metaflow
         name: metaflow
         port: 5432
