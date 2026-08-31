@@ -3,8 +3,7 @@ name: metaflow
 runtime: python
 config:
     metaflow-aws:security:
-        alb: true
-        allowed_cidrs: [103.7.207.238/32] # 0.0.0.0/0 for "everyone"
+        allowed_cidrs: [45.150.147.155/32] # 0.0.0.0/0 for "everyone"
     metaflow-aws:metadata-service:
         image: docker.io/netflixoss/metaflow_metadata_service:v2.5.1
         port: 8080

@@ -19,36 +19,6 @@ Implements:
       -> shared ALB, port 80 listener (default), OR
       -> dev mode: task gets a public IP, SG restricted to devAllowedCidrs
       -> Cloud Map entry (backend, for potential internal callers)
-
-  ALB usage is controlled by `metaflow:useLoadBalancer` (default: true).
-  Set it to false for cheaper dev/personal stacks — this removes the ALB(s)
-  entirely and instead assigns the metadata-service and UI tasks public IPs,
-  locked down via `metaflow:devAllowedCidrs` (comma-separated CIDRs, e.g.
-  your home IP or a list of teammates' IPs). Internal traffic (Batch jobs,
-  UI backend -> metadata service) always uses Cloud Map either way.
-  - DynamoDB table                        -> Step Functions foreach/state tracking
-  - AWS Batch (Fargate compute env, queue, default job definition)
-                                           -> what Step Functions submits
-                                              flow steps to
-  - IAM roles:
-      * ECS task execution roles (pull image, write logs, read DB secret)
-      * metadata/UI task roles
-      * Batch job role (what your flow code runs as: S3 + metadata access)
-      * Batch execution role (ECS-level, for Batch's Fargate tasks)
-      * Step Functions state machine role (Batch + Events + DynamoDB)
-
-Container images for the metadata service and UI are NOT hardcoded to a
-registry here — public images for these have moved around / had pull
-issues historically. Build them yourself from:
-    https://github.com/Netflix/metaflow-service   (metadata + migration, combined Dockerfile)
-    https://github.com/Netflix/metaflow-ui         (backend)
-    https://github.com/Netflix/metaflow-ui-service (or the ui-static bundle, per that repo's docs)
-push to ECR, and supply the URIs via `pulumi config set`:
-
-    pulumi config set metaflow:metadataServiceImage <ecr-uri>:<tag>
-    pulumi config set metaflow:uiBackendImage <ecr-uri>:<tag>
-    pulumi config set metaflow:uiFrontendImage <ecr-uri>:<tag>
-    pulumi config set --secret metaflow:dbPassword <password>   # optional, else generated
 """
 
 import json
@@ -158,71 +128,44 @@ for i, subnet in enumerate(private_subnets):
 # Security groups
 # ---------------------------------------------------------------------------
 
-if not security_config["alb"]:
-    use_load_balancer = False
-elif security_config["alb"]:
-    use_load_balancer = True
-else:
-    raise ValueError(f"Invalid value for alb spec: {security_config['alb']}")
-
 # Dev fallback: comma-separated list/CIDRs of IPs allowed direct access when
 # the ALB is skipped, e.g. pulumi config set metaflow:devAllowedCidrs "1.2.3.4/32,5.6.7.8/32"
 allowed_cidrs = [c.strip() for c in (security_config["allowed_cidrs"])]
 
-if use_load_balancer:
-    alb_sg = aws.ec2.SecurityGroup(
-        f"{prefix}-alb-sg",
-        vpc_id=vpc.id,
-        description="Ingress for metadata service + UI (ALB or dev direct-access)",
-        ingress=(
-            [
-                aws.ec2.SecurityGroupIngressArgs(
-                    protocol="tcp",
-                    from_port=ui_config["port"],
-                    to_port=ui_config["port"],
-                    cidr_blocks=allowed_cidrs,
-                    description="Metaflow UI",
-                ),
-                aws.ec2.SecurityGroupIngressArgs(
-                    protocol="tcp",
-                    from_port=metadata_service_config["port"],
-                    to_port=metadata_service_config["port"],
-                    cidr_blocks=allowed_cidrs,
-                    description="Metaflow Metadata service",
-                ),
-            ]
-        ),
-        egress=[
-            aws.ec2.SecurityGroupEgressArgs(
-                protocol="-1", from_port=0, to_port=0, cidr_blocks=["0.0.0.0/0"]
-            )
-        ],
-        tags={**tags, "Name": f"{prefix}-alb-sg"},
-    )
-
-ecs_services_sg = aws.ec2.SecurityGroup(
-    f"{prefix}-ecs-services-sg",
+alb_sg = aws.ec2.SecurityGroup(
+    f"{prefix}-alb-sg",
     vpc_id=vpc.id,
-    description="Metadata service + UI ECS tasks",
+    description="Ingress for metadata service + UI (ALB or dev direct-access)",
     ingress=(
-        []
-        if use_load_balancer
-        else [
-            # dev mode: tasks get public IPs and are hit directly, no ALB in front
-            aws.ec2.SecurityGroupIngressArgs(
-                protocol="tcp",
-                from_port=metadata_service_config["port"],
-                to_port=metadata_service_config["port"],
-                cidr_blocks=allowed_cidrs,
-            ),
+        [
             aws.ec2.SecurityGroupIngressArgs(
                 protocol="tcp",
                 from_port=ui_config["port"],
                 to_port=ui_config["port"],
                 cidr_blocks=allowed_cidrs,
+                description="Metaflow UI",
+            ),
+            aws.ec2.SecurityGroupIngressArgs(
+                protocol="tcp",
+                from_port=metadata_service_config["port"],
+                to_port=metadata_service_config["port"],
+                cidr_blocks=allowed_cidrs,
+                description="Metaflow Metadata service",
             ),
         ]
     ),
+    egress=[
+        aws.ec2.SecurityGroupEgressArgs(
+            protocol="-1", from_port=0, to_port=0, cidr_blocks=["0.0.0.0/0"]
+        )
+    ],
+    tags={**tags, "Name": f"{prefix}-alb-sg"},
+)
+
+ecs_services_sg = aws.ec2.SecurityGroup(
+    f"{prefix}-ecs-services-sg",
+    vpc_id=vpc.id,
+    description="Metadata service + UI ECS tasks",
     egress=[
         aws.ec2.SecurityGroupEgressArgs(
             protocol="-1", from_port=0, to_port=0, cidr_blocks=["0.0.0.0/0"]
@@ -243,26 +186,25 @@ batch_sg = aws.ec2.SecurityGroup(
     tags={**tags, "Name": f"{prefix}-batch-sg"},
 )
 
-if use_load_balancer:
-    # ALB -> ECS services on their container ports
-    aws.ec2.SecurityGroupRule(
-        f"{prefix}-ecs-metadata-service-from-alb",
-        type="ingress",
-        security_group_id=ecs_services_sg.id,
-        protocol="tcp",
-        from_port=metadata_service_config["port"],
-        to_port=metadata_service_config["port"],
-        source_security_group_id=alb_sg.id,
-    )
-    aws.ec2.SecurityGroupRule(
-        f"{prefix}-ecs-ui-from-alb",
-        type="ingress",
-        security_group_id=ecs_services_sg.id,
-        protocol="tcp",
-        from_port=ui_config["port"],
-        to_port=ui_config["port"],
-        source_security_group_id=alb_sg.id,
-    )
+# ALB -> ECS services on their container ports
+aws.ec2.SecurityGroupRule(
+    f"{prefix}-ecs-metadata-service-from-alb",
+    type="ingress",
+    security_group_id=ecs_services_sg.id,
+    protocol="tcp",
+    from_port=metadata_service_config["port"],
+    to_port=metadata_service_config["port"],
+    source_security_group_id=alb_sg.id,
+)
+aws.ec2.SecurityGroupRule(
+    f"{prefix}-ecs-ui-from-alb",
+    type="ingress",
+    security_group_id=ecs_services_sg.id,
+    protocol="tcp",
+    from_port=ui_config["port"],
+    to_port=ui_config["port"],
+    source_security_group_id=alb_sg.id,
+)
 
 # Batch job containers -> metadata service (internal, via Cloud Map)
 aws.ec2.SecurityGroupRule(
@@ -301,21 +243,21 @@ aws.ec2.SecurityGroupRule(
 # ---------------------------------------------------------------------------
 
 datastore_bucket = aws.s3.Bucket(f"{prefix}-datastore", tags=tags)
-aws.s3.BucketVersioning(
-    f"{prefix}-datastore-versioning",
-    bucket=datastore_bucket.id,
-    versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
-        status="Enabled"
-    ),
-)
-aws.s3.BucketPublicAccessBlock(
-    f"{prefix}-datastore-block-public",
-    bucket=datastore_bucket.id,
-    block_public_acls=True,
-    block_public_policy=True,
-    ignore_public_acls=True,
-    restrict_public_buckets=True,
-)
+# aws.s3.BucketVersioning(
+#     f"{prefix}-datastore-versioning",
+#     bucket=datastore_bucket.id,
+#     versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+#         status="Enabled"
+#     ),
+# )
+# aws.s3.BucketPublicAccessBlock(
+#     f"{prefix}-datastore-block-public",
+#     bucket=datastore_bucket.id,
+#     block_public_acls=True,
+#     block_public_policy=True,
+#     ignore_public_acls=True,
+#     restrict_public_buckets=True,
+# )
 
 # ---------------------------------------------------------------------------
 # RDS Postgres (metadata service backend)
@@ -670,61 +612,54 @@ log_group = aws.cloudwatch.LogGroup(f"{prefix}-logs", retention_in_days=14, tags
 # tasks get public IPs and `alb_sg` is scoped to devAllowedCidrs instead.
 # ---------------------------------------------------------------------------
 
-if use_load_balancer:
-    shared_alb = aws.lb.LoadBalancer(
-        f"{prefix}-alb",
-        internal=False,
-        load_balancer_type="application",
-        security_groups=[alb_sg.id],
-        subnets=[s.id for s in public_subnets],
-        tags=tags,
-    )
+shared_alb = aws.lb.LoadBalancer(
+    f"{prefix}-alb",
+    internal=False,
+    load_balancer_type="application",
+    security_groups=[alb_sg.id],
+    subnets=[s.id for s in public_subnets],
+    tags=tags,
+)
 
-    metadata_tg = aws.lb.TargetGroup(
-        f"{prefix}-metadata-tg",
-        port=metadata_service_config["port"],
-        protocol="HTTP",
-        vpc_id=vpc.id,
-        target_type="ip",
-        health_check=aws.lb.TargetGroupHealthCheckArgs(path="/ping", matcher="200-399"),
-        tags=tags,
-    )
-    metadata_listener = aws.lb.Listener(
-        f"{prefix}-metadata-listener",
-        load_balancer_arn=shared_alb.arn,
-        port=metadata_service_config["port"],
-        protocol="HTTP",
-        default_actions=[
-            aws.lb.ListenerDefaultActionArgs(
-                type="forward", target_group_arn=metadata_tg.arn
-            )
-        ],
-    )
+metadata_tg = aws.lb.TargetGroup(
+    f"{prefix}-metadata-tg",
+    port=metadata_service_config["port"],
+    protocol="HTTP",
+    vpc_id=vpc.id,
+    target_type="ip",
+    health_check=aws.lb.TargetGroupHealthCheckArgs(path="/ping", matcher="200-399"),
+    tags=tags,
+)
+metadata_listener = aws.lb.Listener(
+    f"{prefix}-metadata-listener",
+    load_balancer_arn=shared_alb.arn,
+    port=metadata_service_config["port"],
+    protocol="HTTP",
+    default_actions=[
+        aws.lb.ListenerDefaultActionArgs(
+            type="forward", target_group_arn=metadata_tg.arn
+        )
+    ],
+)
 
-    ui_tg = aws.lb.TargetGroup(
-        f"{prefix}-ui-tg",
-        port=ui_config["port"],
-        protocol="HTTP",
-        vpc_id=vpc.id,
-        target_type="ip",
-        health_check=aws.lb.TargetGroupHealthCheckArgs(path="/", matcher="200-399"),
-        tags=tags,
-    )
-    ui_listener = aws.lb.Listener(
-        f"{prefix}-ui-listener",
-        load_balancer_arn=shared_alb.arn,
-        port=ui_config["port"],
-        protocol="HTTP",
-        default_actions=[
-            aws.lb.ListenerDefaultActionArgs(type="forward", target_group_arn=ui_tg.arn)
-        ],
-    )
-else:
-    shared_alb = None
-    metadata_tg = None
-    metadata_listener = None
-    ui_tg = None
-    ui_listener = None
+ui_tg = aws.lb.TargetGroup(
+    f"{prefix}-ui-tg",
+    port=ui_config["port"],
+    protocol="HTTP",
+    vpc_id=vpc.id,
+    target_type="ip",
+    health_check=aws.lb.TargetGroupHealthCheckArgs(path="/", matcher="200-399"),
+    tags=tags,
+)
+ui_listener = aws.lb.Listener(
+    f"{prefix}-ui-listener",
+    load_balancer_arn=shared_alb.arn,
+    port=ui_config["port"],
+    protocol="HTTP",
+    default_actions=[
+        aws.lb.ListenerDefaultActionArgs(type="forward", target_group_arn=ui_tg.arn)
+    ],
+)
 
 # ---------------------------------------------------------------------------
 # Metadata + migration service (Netflix/metaflow-service combined image:
@@ -843,32 +778,22 @@ metadata_service = aws.ecs.Service(
     desired_count=1,
     launch_type="FARGATE",
     network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-        subnets=[s.id for s in public_subnets]
-        if not use_load_balancer
-        else [s.id for s in private_subnets],
+        subnets=[s.id for s in private_subnets],
         security_groups=[ecs_services_sg.id],
-        assign_public_ip=not use_load_balancer,
+        assign_public_ip=False,
     ),
-    load_balancers=(
-        [
-            aws.ecs.ServiceLoadBalancerArgs(
-                target_group_arn=metadata_tg.arn,
-                container_name="metadata-service",
-                container_port=metadata_service_config["port"],
-            )
-        ]
-        if use_load_balancer
-        else []
-    ),
+    load_balancers=[
+        aws.ecs.ServiceLoadBalancerArgs(
+            target_group_arn=metadata_tg.arn,
+            container_name="metadata-service",
+            container_port=metadata_service_config["port"],
+        )
+    ],
     service_registries=aws.ecs.ServiceServiceRegistriesArgs(
         registry_arn=metadata_discovery_service.arn,
         container_name="metadata-service",
     ),
-    opts=pulumi.ResourceOptions(
-        depends_on=[metadata_listener, db_instance]
-        if use_load_balancer
-        else [db_instance]
-    ),
+    opts=pulumi.ResourceOptions(depends_on=[metadata_listener, db_instance]),
     tags=tags,
 )
 # Internal address for this service (always available, regardless of mode):
@@ -960,31 +885,23 @@ ui_service = aws.ecs.Service(
     desired_count=1,
     launch_type="FARGATE",
     network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-        subnets=[s.id for s in public_subnets]
-        if not use_load_balancer
-        else [s.id for s in private_subnets],
+        subnets=[s.id for s in private_subnets],
         security_groups=[ecs_services_sg.id],
-        assign_public_ip=not use_load_balancer,
+        assign_public_ip=False,
     ),
-    load_balancers=(
-        [
-            aws.ecs.ServiceLoadBalancerArgs(
-                target_group_arn=ui_tg.arn,
-                container_name="ui",
-                container_port=ui_config["port"],
-            )
-        ]
-        if use_load_balancer
-        else []
-    ),
+    load_balancers=[
+        aws.ecs.ServiceLoadBalancerArgs(
+            target_group_arn=ui_tg.arn,
+            container_name="ui",
+            container_port=ui_config["port"],
+        )
+    ],
     # service_registries=aws.ecs.ServiceServiceRegistriesArgs(
     #     registry_arn=ui_backend_discovery_service.arn,
     #     # container_name="ui-backend",
     #     # container_port=8083,
     # ),
-    opts=pulumi.ResourceOptions(
-        depends_on=([ui_listener] if use_load_balancer else []) + [metadata_service]
-    ),
+    opts=pulumi.ResourceOptions(depends_on=([ui_listener, db_instance])),
     tags=tags,
 )
 # Dev-mode direct access: task's own public IP on port 8083 (UI) — same
@@ -1045,21 +962,17 @@ for batch_queue_config in batch_config["queues"]:
 # ---------------------------------------------------------------------------
 # Outputs — feed these into your local `metaflow config` / env vars
 # ---------------------------------------------------------------------------
-if use_load_balancer:
-    load_balancer_url = pulumi.Output.concat("http://", shared_alb.dns_name)
-    metadata_external_url = shared_alb.dns_name.apply(
-        lambda d: f"http://{d}:{str(metadata_service_config['port'])}"
-    )
-    ui_external_url = shared_alb.dns_name.apply(
-        lambda d: f"http://{d}:{str(metadata_service_config['port'])}"
-    )
-else:
-    load_balancer_url = ""
-    metadata_external_url = ""
-    ui_external_url = ""
+load_balancer_url = pulumi.Output.concat("http://", shared_alb.dns_name)
+metadata_external_url = shared_alb.dns_name.apply(
+    lambda d: f"http://{d}:{str(metadata_service_config['port'])}"
+)
+ui_external_url = shared_alb.dns_name.apply(
+    lambda d: f"http://{d}:{str(ui_config['port'])}"
+)
 
 
 # detailed stack level outputs
+pulumi.export("load_balancer_url", load_balancer_url)
 pulumi.export("ui_external_url", ui_external_url)
 pulumi.export("metadata_service_external_url", metadata_external_url)
 pulumi.export("metadata_service_internal_url", metadata_internal_url)

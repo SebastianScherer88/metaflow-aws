@@ -328,8 +328,14 @@ wheels = [
 [[package]]
 name = "metaflow-aws"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
+    { name = "boto3" },
+    { name = "metaflow" },
+]
+
+[package.dev-dependencies]
+dev = [
     { name = "boto3" },
     { name = "metaflow" },
     { name = "pip" },
@@ -341,6 +347,12 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.43.78" },
+    { name = "metaflow", specifier = ">=2.19.38" },
+]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "boto3", specifier = ">=1.43.78" },
     { name = "metaflow", specifier = ">=2.19.38" },
     { name = "pip", specifier = ">=26.2.1" },

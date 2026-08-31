@@ -56,6 +56,7 @@ Then run
 
 ```bash
 pulumi stack output metaflow_config --json > ../.metaflowconfig/config.json
+export METAFLOW_HOME=/workspace/.metaflowconfig
 ```
 
 to generate the metaflow config file. It will have the correct AWS references
