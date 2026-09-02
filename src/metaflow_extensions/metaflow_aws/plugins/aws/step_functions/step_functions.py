@@ -329,11 +329,25 @@ class CustomStepFunctions(object):
 
     @classmethod
     def get_existing_deployment(cls, flow_name: str) -> tuple[str, str] | None:
+        """Retrieves the flow owner and production token for the given flow via
+        its AWS resource tags, if a tagged deployment already exists. Otherwise
+        returns None.
+
+        Args:
+            flow_name (str): The name of the flow to retrieve deployment
+                information for.
+
+        Raises:
+            StepFunctionsException: If a deployment exists but the information
+                can not be retrieved via its tags.
+
+        Returns:
+            tuple[str, str] | None: The tuple of owner and production token, or
+                None if no deployment exists.
+        """
         client = CustomStepFunctionsClient()
 
-        state_machine_arns = list(
-            CustomStepFunctionsClient().list_arns(flow_name=flow_name)
-        )
+        state_machine_arns = list(client.list_arns(flow_name=flow_name))
         if state_machine_arns:
             try:
                 state_machine_tags = client.get_tags(
@@ -369,7 +383,8 @@ class CustomStepFunctions(object):
         from datetime import datetime, timezone
 
         tags = {
-            "metaflow/production_token": self.production_token,
+            CustomStepFunctionTags.resource_owner_key: CustomStepFunctionTags.resoure_owner_value,
+            CustomStepFunctionTags.flow_production_token_key: self.production_token,
             CustomStepFunctionTags.flow_owner_key: self.username,
             CustomStepFunctionTags.flow_user_key: "SFN",
             CustomStepFunctionTags.flow_name_key: self.flow.name,
@@ -1177,11 +1192,15 @@ class CustomStepFunctions(object):
         return " && ".join(cmds)
 
 
-class Workflow(object):
+class NestedDefaultDictTreeBase:
+    def tree(self):
+        return lambda: defaultdict(self.tree)
+
+
+class Workflow(NestedDefaultDictTreeBase):
     def __init__(self, name):
         self.name = name
-        tree = lambda: defaultdict(tree)
-        self.payload = tree()
+        self.payload = self.tree()
 
     def mode(self, mode):
         self.payload["ProcessorConfig"] = {"Mode": mode}
@@ -1205,11 +1224,10 @@ class Workflow(object):
         return json.dumps(self.payload, indent=4 if pretty else None)
 
 
-class State(object):
+class State(NestedDefaultDictTreeBase):
     def __init__(self, name):
         self.name = name
-        tree = lambda: defaultdict(tree)
-        self.payload = tree()
+        self.payload = self.tree()
         self.payload["Type"] = "Task"
 
     def resource(self, resource):
@@ -1287,11 +1305,10 @@ class State(object):
         return self
 
 
-class Pass(object):
+class Pass(NestedDefaultDictTreeBase):
     def __init__(self, name):
         self.name = name
-        tree = lambda: defaultdict(tree)
-        self.payload = tree()
+        self.payload = self.tree()
         self.payload["Type"] = "Pass"
 
     def end(self):
@@ -1307,11 +1324,10 @@ class Pass(object):
         return self
 
 
-class Parallel(object):
+class Parallel(NestedDefaultDictTreeBase):
     def __init__(self, name):
         self.name = name
-        tree = lambda: defaultdict(tree)
-        self.payload = tree()
+        self.payload = self.tree()
         self.payload["Type"] = "Parallel"
 
     def branch(self, workflow):
@@ -1333,11 +1349,10 @@ class Parallel(object):
         return self
 
 
-class Map(object):
+class Map(NestedDefaultDictTreeBase):
     def __init__(self, name):
         self.name = name
-        tree = lambda: defaultdict(tree)
-        self.payload = tree()
+        self.payload = self.tree()
         self.payload["Type"] = "Map"
         self.payload["MaxConcurrency"] = 0
 
@@ -1385,10 +1400,9 @@ class Map(object):
         return self
 
 
-class JSONItemReader(object):
+class JSONItemReader(NestedDefaultDictTreeBase):
     def __init__(self):
-        tree = lambda: defaultdict(tree)
-        self.payload = tree()
+        self.payload = self.tree()
         self.payload["ReaderConfig"] = {"InputType": "JSON", "MaxItems": 1}
 
     def resource(self, resource):
