@@ -1,6 +1,59 @@
 # Metaflow on AWS — Pulumi (Python)
 
-This repository contains the pulumi code to provision an AWS Batch and Stepfunctions
+This repository includes a `step-function` plugin that implements the 
+`from_deployment` pattern currently only supported by the `argo` backend. It 
+supports the creation of flows from remote state machine deployments, removing
+ the need for referencing the flow `.py` module before invoking the flow to
+ create a new run:
+
+```bash
+>>> # create a deployment as usual referencing the flow .py file
+>>> from metaflow import Deployer
+>>> deployed_flow = Deployer('nested_each_flow.py').step_functions().create()
+Metaflow 2.19.38 executing ForEachFlow for user:metaflow-user
+Validating your flow...
+    The graph looks good!
+Running pylint...
+    Pylint not found, so extra checks are disabled.
+Deploying ForEachFlow to AWS Step Functions...
+It seems this is the first time you are deploying ForEachFlow to AWS Step Functions.
+
+A new production token generated.
+
+The namespace of this production flow is
+    production:foreachflow-0-nlvb
+To analyze results of this production flow add this line in your notebooks:
+    namespace("production:foreachflow-0-nlvb")
+If you want to authorize other people to deploy new versions of this flow to AWS Step Functions, they need to call
+    step-functions create --authorize foreachflow-0-nlvb
+when deploying this flow to AWS Step Functions for the first time.
+See "Organizing Results" at https://docs.metaflow.org/ for more information about production tokens.
+
+State Machine ForEachFlow for flow ForEachFlow pushed to AWS Step Functions successfully.
+
+What will trigger execution of the workflow:
+    No triggers defined. You need to launch this workflow manually.
+>>> # re-create a second deployed flow, referencing only the remote deployment
+>>> deployed_flow = DeployedFlow.from_deployment('arn:aws:states:eu-west-1:743582000746:stateMachine:ForEachFlow')
+>>> deployed_flow.trigger(param_1=2)
+Metaflow 2.19.38 executing ForEachFlow for user:metaflow-user
+Validating your flow...
+    The graph looks good!
+Running pylint...
+    Pylint not found, so extra checks are disabled.
+Workflow ForEachFlow triggered on AWS Step Functions (run-id sfn-bd1ac153-a02d-484e-9701-437b61e1f43b).
+<metaflow_extensions.metaflow_aws.plugins.aws.step_functions.step_functions_deployer_objects.CustomStepFunctionsTriggeredRun object at 0x7bf537aab110>
+>>> deployed_flow.list_runs()
+[<metaflow_extensions.metaflow_aws.plugins.aws.step_functions.step_functions_deployer_objects.CustomStepFunctionsTriggeredRun object at 0x7bf5351bb820>]
+>>> deployed_flow.list_runs(states=['RUNNING'])
+[<metaflow_extensions.metaflow_aws.plugins.aws.step_functions.step_functions_deployer_objects.CustomStepFunctionsTriggeredRun object at 0x7bf53518e7b0>]
+```
+
+![New entry in the deployed flow's state machine definition overrides environment section](image/state-machine-definition-overrides.png)
+
+![New tag structure on deployed flow's state machine resources](image/state-machine-tags.png)
+
+It also contains the pulumi code to provision an AWS Batch and Stepfunctions
 backed metaflow stack on AWS, and some test flows to validate said infrastructure.
 
 ## Setup
