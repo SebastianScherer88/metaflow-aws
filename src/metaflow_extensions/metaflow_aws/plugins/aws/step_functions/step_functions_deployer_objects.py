@@ -2,15 +2,12 @@ import json
 import sys
 from typing import ClassVar, Iterator, Optional
 
-from metaflow.exception import MetaflowException
 from metaflow.runner.deployer import DeployedFlow, TriggeredRun
 from metaflow.runner.utils import get_lower_level_group, handle_timeout, temporary_fifo
 
 from .step_functions import CustomStepFunctions
 from .step_functions_client import (
-    CustomStepFunctionsClient,
     CustomStepFunctionsState,
-    CustomStepFunctionTags,
 )
 
 
@@ -93,68 +90,68 @@ class CustomStepFunctionsDeployedFlow(DeployedFlow):
                 # Skip templates that can't be converted to DeployedFlow objects
                 continue
 
-    @classmethod
-    def from_deployment(cls, identifier: str, metadata: Optional[str] = None):
-        """
-        Retrieves a deployed flow based on a state machine arn
-        Raises
-        ------
-        NotImplementedError
-            This method is not implemented for Step Functions.
-        """
-        client = CustomStepFunctionsClient()
-        deployment_tags = client.get_tags(identifier)
+    # @classmethod
+    # def from_deployment(cls, identifier: str, metadata: Optional[str] = None):
+    #     """
+    #     Retrieves a deployed flow based on a state machine arn
+    #     Raises
+    #     ------
+    #     NotImplementedError
+    #         This method is not implemented for Step Functions.
+    #     """
+    #     client = CustomStepFunctionsClient()
+    #     deployment_tags = client.get_tags(identifier)
 
-        if deployment_tags is None:
-            raise MetaflowException("No deployed flow found for: %s" % identifier)
+    #     if deployment_tags is None:
+    #         raise MetaflowException("No deployed flow found for: %s" % identifier)
 
-        flow_name = deployment_tags.get(CustomStepFunctionTags.flow_name_key, "")
-        username = deployment_tags.get(CustomStepFunctionTags.flow_owner_key, "")
-        parameters = json.loads(
-            deployment_tags.get(CustomStepFunctionTags.flow_parameters_key, "{}")
-        )
+    #     flow_name = deployment_tags.get(CustomStepFunctionTags.flow_name_key, "")
+    #     username = deployment_tags.get(CustomStepFunctionTags.flow_owner_key, "")
+    #     parameters = json.loads(
+    #         deployment_tags.get(CustomStepFunctionTags.flow_parameters_key, "{}")
+    #     )
 
-        # these two only exist if @project decorator is used..
-        branch_name = metadata_annotations.get("metaflow/branch_name", None)
-        project_name = metadata_annotations.get("metaflow/project_name", None)
+    #     # these two only exist if @project decorator is used..
+    #     branch_name = metadata_annotations.get("metaflow/branch_name", None)
+    #     project_name = metadata_annotations.get("metaflow/project_name", None)
 
-        project_kwargs = {}
-        if branch_name is not None:
-            if branch_name.startswith("prod."):
-                project_kwargs["production"] = True
-                project_kwargs["branch"] = branch_name[len("prod.") :]
-            elif branch_name.startswith("test."):
-                project_kwargs["branch"] = branch_name[len("test.") :]
-            elif branch_name == "prod":
-                project_kwargs["production"] = True
+    #     project_kwargs = {}
+    #     if branch_name is not None:
+    #         if branch_name.startswith("prod."):
+    #             project_kwargs["production"] = True
+    #             project_kwargs["branch"] = branch_name[len("prod.") :]
+    #         elif branch_name.startswith("test."):
+    #             project_kwargs["branch"] = branch_name[len("test.") :]
+    #         elif branch_name == "prod":
+    #             project_kwargs["production"] = True
 
-        fake_flow_file_contents = generate_fake_flow_file_contents(
-            flow_name=flow_name, param_info=parameters, project_name=project_name
-        )
+    #     fake_flow_file_contents = generate_fake_flow_file_contents(
+    #         flow_name=flow_name, param_info=parameters, project_name=project_name
+    #     )
 
-        with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as fake_flow_file:
-            with open(fake_flow_file.name, "w") as fp:
-                fp.write(fake_flow_file_contents)
+    # with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as fake_flow_file:
+    #     with open(fake_flow_file.name, "w") as fp:
+    #         fp.write(fake_flow_file_contents)
 
-            if branch_name is not None:
-                d = Deployer(
-                    fake_flow_file.name,
-                    env={"METAFLOW_USER": username},
-                    **project_kwargs,
-                ).argo_workflows()
-            else:
-                d = Deployer(
-                    fake_flow_file.name, env={"METAFLOW_USER": username}
-                ).argo_workflows(name=identifier)
+    #     if branch_name is not None:
+    #         d = Deployer(
+    #             fake_flow_file.name,
+    #             env={"METAFLOW_USER": username},
+    #             **project_kwargs,
+    #         ).argo_workflows()
+    #     else:
+    #         d = Deployer(
+    #             fake_flow_file.name, env={"METAFLOW_USER": username}
+    #         ).argo_workflows(name=identifier)
 
-            d.name = identifier
-            d.flow_name = flow_name
-            if metadata is None:
-                d.metadata = get_metadata()
-            else:
-                d.metadata = metadata
+    #     d.name = identifier
+    #     d.flow_name = flow_name
+    #     if metadata is None:
+    #         d.metadata = get_metadata()
+    #     else:
+    #         d.metadata = metadata
 
-        return cls(deployer=d)
+    # return cls(deployer=d)
 
     @classmethod
     def get_triggered_run(

@@ -20,7 +20,7 @@ class CustomStepFunctionTags(StrEnum):
 
     flow_user_key = "metaflow/user"
     flow_user_value = "SFN"
-    
+
     flow_production_token_key = "metaflow/production_token"
 
     flow_name_key = "metaflow/flow_name"

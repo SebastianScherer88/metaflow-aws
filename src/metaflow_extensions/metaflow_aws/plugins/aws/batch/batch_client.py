@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from collections import defaultdict
 import copy
+import hashlib
 import random
 import time
-import hashlib
+from collections import defaultdict
 
 try:
     unicode
@@ -214,13 +214,13 @@ class BatchJob(object):
         if log_driver or log_options:
             job_definition["containerProperties"]["logConfiguration"] = {}
         if log_driver:
-            job_definition["containerProperties"]["logConfiguration"][
-                "logDriver"
-            ] = log_driver
+            job_definition["containerProperties"]["logConfiguration"]["logDriver"] = (
+                log_driver
+            )
         if log_options:
-            job_definition["containerProperties"]["logConfiguration"][
-                "options"
-            ] = log_options_dict
+            job_definition["containerProperties"]["logConfiguration"]["options"] = (
+                log_options_dict
+            )
 
         if platform == "FARGATE" or platform == "FARGATE_SPOT":
             if num_parallel > 1:

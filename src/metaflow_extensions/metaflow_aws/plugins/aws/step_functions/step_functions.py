@@ -328,15 +328,22 @@ class CustomStepFunctions(object):
             raise StepFunctionsException(repr(e))
 
     @classmethod
-    def get_existing_deployment(cls, flow_name: str) -> tuple[str,str] | None:
-        
+    def get_existing_deployment(cls, flow_name: str) -> tuple[str, str] | None:
         client = CustomStepFunctionsClient()
-        
-        state_machine_arns = list(CustomStepFunctionsClient().list_arns(flow_name=flow_name))
+
+        state_machine_arns = list(
+            CustomStepFunctionsClient().list_arns(flow_name=flow_name)
+        )
         if state_machine_arns:
             try:
-                state_machine_tags = client.get_tags(state_machine_arn=state_machine_arns[0])
-                return state_machine_tags.get(CustomStepFunctionTags.flow_owner_key), state_machine_tags.get(CustomStepFunctionTags.flow_production_token_key)
+                state_machine_tags = client.get_tags(
+                    state_machine_arn=state_machine_arns[0]
+                )
+                return state_machine_tags.get(
+                    CustomStepFunctionTags.flow_owner_key
+                ), state_machine_tags.get(
+                    CustomStepFunctionTags.flow_production_token_key
+                )
                 # definition = json.loads(workflow["definition"])
                 # start_state_name = definition.get("StartAt", "start")
                 # start = definition["States"][start_state_name]
