@@ -1,5 +1,6 @@
+import json
 from enum import StrEnum
-from typing import Iterator
+from typing import Any, Iterator
 
 from metaflow.metaflow_config import (
     SFN_EXECUTION_LOG_GROUP_ARN,
@@ -38,42 +39,12 @@ class CustomStepFunctionTags(StrEnum):
     flow_parameters_key = "metaflow/parameters"
 
 
-# def aws_resource_tags(
-#         flow_name: str,
-#         # flow_owner: str,
-#         # flow_branch: str = "",
-#         # flow_project: str = ""
-#     ) -> list[dict[str,str]]:
-#     """Generates AWS resource tags containing metaflow metadata to help identify
-#     and retrieve resources associated with (Deployed)Flow(s)."""
-
-#     return [
-#         {'key':str(CustomStepFunctionTags.resource_owner_key),'value':str(CustomStepFunctionTags.resoure_owner_value)},
-#         {'key':str(CustomStepFunctionTags.flow_name_key),'value':flow_name},
-#         # {'key':CustomStepFunctionTags.flow_owner_key,'value':flow_owner},
-#         # {'key':CustomStepFunctionTags.flow_branch_key,'value':flow_branch},
-#         # {'key':CustomStepFunctionTags.flow_project_key,'value':flow_project},
-#     ]
-
-
 class CustomStepFunctionsClient(object):
     def __init__(self):
         from metaflow.plugins.aws.aws_client import get_aws_client
 
         self._client = get_aws_client("stepfunctions")
         self._tagging_client = get_aws_client("resourcegroupstaggingapi")
-
-    # def search(self, name: str):
-    #     paginator = self._client.get_paginator("list_state_machines")
-    #     return next(
-    #         (
-    #             state_machine
-    #             for page in paginator.paginate()
-    #             for state_machine in page["stateMachines"]
-    #             if state_machine["name"] == name
-    #         ),
-    #         None,
-    #     )
 
     def create(
         self,
@@ -93,7 +64,6 @@ class CustomStepFunctionsClient(object):
                     log_execution_history
                 ),
                 tags=tags,
-                # tags=aws_resource_tags(flow_name=flow_name)
             )
             state_machine_arn = response["stateMachineArn"]
         except self._client.exceptions.StateMachineAlreadyExists as e:
@@ -106,9 +76,8 @@ class CustomStepFunctionsClient(object):
                 loggingConfiguration=self._default_logging_configuration(
                     log_execution_history
                 ),
-                tags=tags,
-                # tags=aws_resource_tags(flow_name=flow_name)
             )
+            self._client.tag_resource(resourceArn=state_machine_arn, tags=tags)
         return state_machine_arn
 
     def get_tags(self, state_machine_arn: str) -> dict[str, str] | None:
@@ -128,16 +97,42 @@ class CustomStepFunctionsClient(object):
         except self._client.exceptions.StateMachineDoesNotExist:
             return None
 
-    # def get(self, name: str):
-    #     state_machine_arn = self.get_state_machine_arn(name)
-    #     if state_machine_arn is None:
-    #         return None
-    #     try:
-    #         return self._client.describe_state_machine(
-    #             stateMachineArn=state_machine_arn,
-    #         )
-    #     except self._client.exceptions.StateMachineDoesNotExist:
-    #         return None
+    def get_parameters(
+        self, state_machine_arn: str
+    ) -> dict[str, dict[str, Any]] | None:
+        """Retrieves the metaflow parameter context required to reconstruct
+        a tempfile for the deployed flow as required by the from_deployment
+        mechanism.
+
+        Args:
+            state_machine_arn (str): The ARN of the state machine.
+
+        Returns:
+            dict[str,str] | None: The dictionary containing all the required
+                parameters meta data to re-construct a DeployedFlow object.
+        """
+
+        state_machine_description: dict = self._client.describe_state_machine(
+            stateMachineArn=state_machine_arn,
+        )
+        definition = json.loads(state_machine_description["definition"])
+        start_state_name = definition.get("StartAt", "start")
+        start_state = definition["States"][start_state_name]
+        start_state_environment = start_state["Parameters"]["ContainerOverrides"][
+            "Environment"
+        ]
+        parameters_spec = [
+            env_spec
+            for env_spec in start_state_environment
+            if env_spec["Name"] == "METAFLOW_ALL_PARAMETERS"
+        ]
+
+        if parameters_spec:
+            parameters = json.loads(parameters_spec[0]["Value"])
+        else:
+            parameters = {}
+
+        return parameters
 
     def create_execution(self, state_machine_arn: str, input: str) -> str:
         """
@@ -246,23 +241,6 @@ class CustomStepFunctionsClient(object):
             }
         else:
             return {"level": "OFF"}
-
-    # def get_state_machine_arn(self, name: str):
-    #     if AWS_SANDBOX_ENABLED:
-    #         # We can't execute list_state_machines within the sandbox,
-    #         # but we can construct the statemachine arn since we have
-    #         # explicit access to the region.
-    #         from metaflow.plugins.aws.aws_client import get_aws_client
-
-    #         account_id = get_aws_client("sts").get_caller_identity().get("Account")
-    #         region = AWS_SANDBOX_REGION
-    #         # Sandboxes are in aws partition
-    #         return "arn:aws:states:%s:%s:stateMachine:%s" % (region, account_id, name)
-    #     else:
-    #         state_machine = self.search(name)
-    #         if state_machine:
-    #             return state_machine["stateMachineArn"]
-    #         return None
 
     def delete(self, flow_name: str) -> dict | None:
         """Deletes the associated metaflow flow's state machine and schedule"""

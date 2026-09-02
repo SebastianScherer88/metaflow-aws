@@ -5,11 +5,13 @@ import random
 import string
 import sys
 from collections import defaultdict
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator
 
-from metaflow import R, current
+from metaflow import FlowSpec, JSONType, R, current
 from metaflow.decorators import flow_decorators
 from metaflow.exception import MetaflowException
+from metaflow.graph import FlowGraph
+from metaflow.includefile import FilePathClass
 from metaflow.metaflow_config import (
     EVENTS_SFN_ACCESS_IAM_ROLE,
     S3_ENDPOINT_URL,
@@ -18,11 +20,13 @@ from metaflow.metaflow_config import (
     SFN_IAM_ROLE,
     SFN_S3_DISTRIBUTED_MAP_OUTPUT_PATH,
 )
+from metaflow.metaflow_environment import MetaflowEnvironment
 from metaflow.parameters import deploy_time_eval
 from metaflow.plugins.aws.batch.batch import Batch
 from metaflow.plugins.aws.step_functions.event_bridge_client import EventBridgeClient
 from metaflow.user_configs.config_options import ConfigInput
 from metaflow.util import dict_to_cli_options, to_pascalcase
+from pydantic import BaseModel, model_validator
 
 from .step_functions_client import (
     CustomStepFunctionsClient,
@@ -39,19 +43,45 @@ class StepFunctionsSchedulingException(MetaflowException):
     headline = "AWS Step Functions scheduling error"
 
 
+class ProcessedParameter(BaseModel):
+    python_var_name: str
+    name: str
+    value: Any | None = None
+    type: str
+    description: str | None = None
+    is_required: bool = False
+    is_text: bool | None = None
+    encoding: str | None = None
+
+    @model_validator(mode="after")
+    def check_is_required(self: "ProcessedParameter") -> "ProcessedParameter":
+        if self.value is None and not self.is_required:
+            raise ValueError(
+                f"Invalid parameter {self.name}: Parameters that are not "
+                "required must have a value defined."
+            )
+
+        return self
+
+
+class ProcessedConfigParameter(BaseModel):
+    name: str
+    kv_name: str
+
+
 class CustomStepFunctions(object):
     def __init__(
         self,
-        name,
-        graph,
-        flow,
+        name: str,
+        graph: FlowGraph,
+        flow: FlowSpec,
         code_package_metadata,
         code_package_sha,
         code_package_url,
         production_token,
         metadata,
         flow_datastore,
-        environment,
+        environment: MetaflowEnvironment,
         event_logger,
         monitor,
         tags=None,
@@ -82,6 +112,7 @@ class CustomStepFunctions(object):
         self.username = username
         self.max_workers = max_workers
         self.workflow_timeout = workflow_timeout
+        self.parameters = self._process_parameters()
         self.config_parameters = self._process_config_parameters()
 
         # https://aws.amazon.com/blogs/aws/step-functions-distributed-map-a-serverless-solution-for-large-scale-parallel-data-processing/
@@ -210,7 +241,7 @@ class CustomStepFunctions(object):
         return schedule_deleted, sfn_deleted
 
     @classmethod
-    def terminate_execution(cls, flow_name, execution_arn) -> dict[str, str]:
+    def terminate_execution(cls, flow_name: str, execution_arn: str) -> dict[str, str]:
         """
         Terminates the specified flow's associated state machine's
          specifed execution after validation.
@@ -233,7 +264,7 @@ class CustomStepFunctions(object):
         return response
 
     @classmethod
-    def create_execution(cls, flow_name, parameters) -> str:
+    def create_execution(cls, flow_name: str, parameters: dict[str, str]) -> str:
         """
         Creates a state machine execution as a metaflow Run by invoking the
         specified flow's associated state machine with the specified parameters.
@@ -358,13 +389,6 @@ class CustomStepFunctions(object):
                 ), state_machine_tags.get(
                     CustomStepFunctionTags.flow_production_token_key
                 )
-                # definition = json.loads(workflow["definition"])
-                # start_state_name = definition.get("StartAt", "start")
-                # start = definition["States"][start_state_name]
-                # parameters = start["Parameters"]["Parameters"]
-                # return parameters.get("metaflow.owner"), parameters.get(
-                #     "metaflow.production_token"
-                # )
             except KeyError:
                 raise StepFunctionsException(
                     "An existing non-metaflow "
@@ -405,59 +429,6 @@ class CustomStepFunctions(object):
         aws_resource_tags = [{"key": k, "value": v} for k, v in tags.items()]
 
         return aws_resource_tags
-
-    # @classmethod
-    # def get_execution(cls, state_machine_name: str, name: str):
-    #     client = CustomStepFunctionsClient()
-    #     try:
-    #         state_machine = client.get(state_machine_name)
-    #     except Exception as e:
-    #         raise StepFunctionsException(repr(e))
-    #     if state_machine is None:
-    #         raise StepFunctionsException(
-    #             "The state machine *%s* doesn't exist on AWS Step Functions."
-    #             % state_machine_name
-    #         )
-    #     try:
-    #         state_machine_arn = state_machine.get("stateMachineArn")
-    #         definition = json.loads(state_machine.get("definition"))
-    #         start_state_name = definition.get("StartAt", "start")
-    #         # Explicit guards rather than chained .get() so we produce
-    #         # readable errors if the state machine has an unexpected shape
-    #         # (e.g., deployed by something other than Metaflow).
-    #         states = definition.get("States") or {}
-    #         start_state = states.get(start_state_name)
-    #         if start_state is None:
-    #             raise StepFunctionsException(
-    #                 "State machine *%s* has no state named *%s* in its "
-    #                 "States block." % (state_machine_name, start_state_name)
-    #             )
-    #         environment_vars = (
-    #             start_state.get("Parameters", {})
-    #             .get("ContainerOverrides", {})
-    #             .get("Environment", [])
-    #         )
-    #         parameters = {
-    #             item.get("Name"): item.get("Value") for item in environment_vars
-    #         }
-    #         executions = client.list_executions(state_machine_arn, states=["RUNNING"])
-    #         for execution in executions:
-    #             if execution.get("name") == name:
-    #                 try:
-    #                     return (
-    #                         execution.get("executionArn"),
-    #                         parameters.get("METAFLOW_OWNER"),
-    #                         parameters.get("METAFLOW_PRODUCTION_TOKEN"),
-    #                         parameters.get("SFN_STATE_MACHINE"),
-    #                     )
-    #                 except KeyError:
-    #                     raise StepFunctionsException(
-    #                         "A non-metaflow workflow *%s* already exists in AWS Step Functions."
-    #                         % name
-    #                     )
-    #         return None
-    #     except Exception as e:
-    #         raise StepFunctionsException(repr(e))
 
     def _compile(self):
         if self.flow._flow_decorators.get("trigger") or self.flow._flow_decorators.get(
@@ -652,12 +623,60 @@ class CustomStepFunctions(object):
             return schedule.schedule
         return None
 
-    def _process_parameters(self):
-        parameters = []
-        has_schedule = self._cron() is not None
+    # def _process_parameters(self):
+    #     parameters = []
+    #     has_schedule = self._cron() is not None
+    #     seen = set()
+    #     for var, param in self.flow._get_parameters():
+    #         # Throw an exception if the parameter is specified twice.
+    #         norm = param.name.lower()
+    #         if norm in seen:
+    #             raise MetaflowException(
+    #                 "Parameter *%s* is specified twice. "
+    #                 "Note that parameter names are "
+    #                 "case-insensitive." % param.name
+    #             )
+    #         seen.add(norm)
+    #         # NOTE: We skip config parameters as these do not have dynamic values,
+    #         # and need to be treated differently.
+    #         if param.IS_CONFIG_PARAMETER:
+    #             continue
+
+    #         is_required = param.kwargs.get("required", False)
+    #         # Throw an exception if a schedule is set for a flow with required
+    #         # parameters with no defaults. We currently don't have any notion
+    #         # of data triggers in AWS Event Bridge.
+    #         if "default" not in param.kwargs and is_required and has_schedule:
+    #             raise MetaflowException(
+    #                 "The parameter *%s* does not have a "
+    #                 "default and is required. Scheduling "
+    #                 "such parameters via AWS Event Bridge "
+    #                 "is not currently supported." % param.name
+    #             )
+    #         value = deploy_time_eval(param.kwargs.get("default"))
+    #         parameters.append(dict(name=param.name, value=value))
+    #     return parameters
+
+    def _process_parameters(self) -> dict[str, ProcessedParameter]:
+        """Processes the parameters of the flow. These can be serializaed and
+        injected into the state machine definition, so they can be extracted
+        and de-serialized back into dictionaries for the `from_deployment`
+        mechanism.
+
+        Adapted from the argo implementation.
+
+        Raises:
+            MetaflowException: Raised for duplicate parameters.
+            MetaflowException: Raised for incompatibility of schedule and
+                required parameters without defaults.
+
+        Returns:
+            dict[str, ProcessedParameter]: The processed parameters
+        """
+        parameters = {}
+        has_schedule = self.flow._flow_decorators.get("schedule") is not None
         seen = set()
         for var, param in self.flow._get_parameters():
-            # Throw an exception if the parameter is specified twice.
             norm = param.name.lower()
             if norm in seen:
                 raise MetaflowException(
@@ -671,22 +690,68 @@ class CustomStepFunctions(object):
             if param.IS_CONFIG_PARAMETER:
                 continue
 
+            extra_attrs = {}
+            if param.kwargs.get("type") == JSONType:
+                param_type = str(param.kwargs.get("type").name)
+            elif isinstance(param.kwargs.get("type"), FilePathClass):
+                param_type = str(param.kwargs.get("type").name)
+                extra_attrs["is_text"] = getattr(
+                    param.kwargs.get("type"), "_is_text", True
+                )
+                extra_attrs["encoding"] = getattr(
+                    param.kwargs.get("type"), "_encoding", "utf-8"
+                )
+            else:
+                param_type = str(param.kwargs.get("type").__name__)
+
             is_required = param.kwargs.get("required", False)
             # Throw an exception if a schedule is set for a flow with required
             # parameters with no defaults. We currently don't have any notion
-            # of data triggers in AWS Event Bridge.
+            # of data triggers in Argo Workflows.
+
             if "default" not in param.kwargs and is_required and has_schedule:
                 raise MetaflowException(
-                    "The parameter *%s* does not have a "
-                    "default and is required. Scheduling "
-                    "such parameters via AWS Event Bridge "
-                    "is not currently supported." % param.name
+                    "The parameter *%s* does not have a default and is required. "
+                    "Scheduling such parameters via Step Functions and "
+                    "EventBridge is not currently supported." % param.name
                 )
-            value = deploy_time_eval(param.kwargs.get("default"))
-            parameters.append(dict(name=param.name, value=value))
+            default_value = deploy_time_eval(param.kwargs.get("default"))
+            # If the value is not required and the value is None, we set the value to
+            # the JSON equivalent of None to please argo-workflows. Unfortunately it
+            # has the side effect of casting the parameter value to string null during
+            # execution - which needs to be fixed imminently.
+            if default_value is None:
+                default_value = json.dumps(None)
+            elif param_type == "JSON":
+                if not isinstance(default_value, str):
+                    # once to serialize the default value if needed.
+                    default_value = json.dumps(default_value)
+                # adds outer quotes to param
+                default_value = json.dumps(default_value)
+            else:
+                # Make argo sensors happy
+                default_value = json.dumps(default_value)
+
+            parameters[param.name] = ProcessedParameter(
+                python_var_name=var,
+                name=param.name,
+                value=default_value,
+                type=param_type,
+                description=param.kwargs.get("help"),
+                is_required=is_required,
+                **extra_attrs,
+            )
         return parameters
 
-    def _process_config_parameters(self):
+    def _process_config_parameters(self) -> list[ProcessedConfigParameter]:
+        """Processes the config parameters of the flow.
+
+        Raises:
+            MetaflowException: Raised for duplicate parameters.
+
+        Returns:
+            list[ProcessedConfigParameter]: The processed config parameters.
+        """
         parameters = []
         seen = set()
         for var, param in self.flow._get_parameters():
@@ -703,7 +768,9 @@ class CustomStepFunctions(object):
             seen.add(norm)
 
             parameters.append(
-                dict(name=param.name, kv_name=ConfigInput.make_key_name(param.name))
+                ProcessedConfigParameter(
+                    name=param.name, kv_name=ConfigInput.make_key_name(param.name)
+                )
             )
         return parameters
 
@@ -777,9 +844,7 @@ class CustomStepFunctions(object):
             attrs["metaflow.run_id.$"] = "$$.Execution.Name"
 
             # Initialize parameters for the flow in the `start` step.
-            parameters = self._process_parameters()
-
-            if parameters:
+            if self.parameters:
                 # Get user-defined parameters from State Machine Input.
                 # Since AWS Step Functions doesn't allow for optional inputs
                 # currently, we have to unfortunately place an artificial
@@ -791,13 +856,17 @@ class CustomStepFunctions(object):
                 # stringified json of the actual parameters -
                 # {"Parameters": "{\"alpha\": \"beta\"}"}
                 env["METAFLOW_PARAMETERS"] = "$.Parameters"
-                default_parameters = {}
-                for parameter in parameters:
-                    if parameter["value"] is not None:
-                        default_parameters[parameter["name"]] = parameter["value"]
+                default_parameters = {
+                    param.name: param.value
+                    for param in self.parameters.values()
+                    if not param.is_required
+                }
                 # Dump the default values specified in the flow.
                 env["METAFLOW_DEFAULT_PARAMETERS"] = json.dumps(default_parameters)
-                env["METAFLOW_ALL_PARAMETERS"] = json.dumps(parameters)
+                parameters_dict = {
+                    param.name: param.model_dump() for param in self.parameters.values()
+                }
+                env["METAFLOW_ALL_PARAMETERS"] = json.dumps(parameters_dict)
             # `start` step has no upstream input dependencies aside from
             # parameters.
             input_paths = None
@@ -957,7 +1026,7 @@ class CustomStepFunctions(object):
         env["METAFLOW_VERSION"] = json.dumps(metaflow_version)
 
         # map config values
-        cfg_env = {param["name"]: param["kv_name"] for param in self.config_parameters}
+        cfg_env = {param.name: param.kv_name for param in self.config_parameters}
         if cfg_env:
             env["METAFLOW_FLOW_CONFIG_VALUE"] = json.dumps(cfg_env)
 
@@ -1194,7 +1263,7 @@ class CustomStepFunctions(object):
 
 class NestedDefaultDictTreeBase:
     def tree(self):
-        return lambda: defaultdict(self.tree)
+        return defaultdict(self.tree)
 
 
 class Workflow(NestedDefaultDictTreeBase):

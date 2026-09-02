@@ -1,8 +1,10 @@
-from metaflow import FlowSpec, step
+from metaflow import Config, FlowSpec, step
 from metaflow.parameters import Parameter
 
 
 class ForEachFlow(FlowSpec):
+    config = Config("config", default="../pyproject.toml", parser="tomllib.loads")
+
     alpha = Parameter(name="param-1", default=1, help="Testing purposes")
     beta = Parameter(name="param-2", default="TEST", help="Also for tests")
     gamma = Parameter(
