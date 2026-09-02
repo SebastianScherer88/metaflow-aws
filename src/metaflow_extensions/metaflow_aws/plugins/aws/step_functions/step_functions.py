@@ -623,40 +623,6 @@ class CustomStepFunctions(object):
             return schedule.schedule
         return None
 
-    # def _process_parameters(self):
-    #     parameters = []
-    #     has_schedule = self._cron() is not None
-    #     seen = set()
-    #     for var, param in self.flow._get_parameters():
-    #         # Throw an exception if the parameter is specified twice.
-    #         norm = param.name.lower()
-    #         if norm in seen:
-    #             raise MetaflowException(
-    #                 "Parameter *%s* is specified twice. "
-    #                 "Note that parameter names are "
-    #                 "case-insensitive." % param.name
-    #             )
-    #         seen.add(norm)
-    #         # NOTE: We skip config parameters as these do not have dynamic values,
-    #         # and need to be treated differently.
-    #         if param.IS_CONFIG_PARAMETER:
-    #             continue
-
-    #         is_required = param.kwargs.get("required", False)
-    #         # Throw an exception if a schedule is set for a flow with required
-    #         # parameters with no defaults. We currently don't have any notion
-    #         # of data triggers in AWS Event Bridge.
-    #         if "default" not in param.kwargs and is_required and has_schedule:
-    #             raise MetaflowException(
-    #                 "The parameter *%s* does not have a "
-    #                 "default and is required. Scheduling "
-    #                 "such parameters via AWS Event Bridge "
-    #                 "is not currently supported." % param.name
-    #             )
-    #         value = deploy_time_eval(param.kwargs.get("default"))
-    #         parameters.append(dict(name=param.name, value=value))
-    #     return parameters
-
     def _process_parameters(self) -> dict[str, ProcessedParameter]:
         """Processes the parameters of the flow. These can be serializaed and
         injected into the state machine definition, so they can be extracted
