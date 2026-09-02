@@ -328,17 +328,22 @@ class CustomStepFunctions(object):
             raise StepFunctionsException(repr(e))
 
     @classmethod
-    def get_existing_deployment(cls, name):
-        workflow = CustomStepFunctionsClient().get(name)
-        if workflow is not None:
+    def get_existing_deployment(cls, flow_name: str) -> tuple[str,str] | None:
+        
+        client = CustomStepFunctionsClient()
+        
+        state_machine_arns = list(CustomStepFunctionsClient().list_arns(flow_name=flow_name))
+        if state_machine_arns:
             try:
-                definition = json.loads(workflow["definition"])
-                start_state_name = definition.get("StartAt", "start")
-                start = definition["States"][start_state_name]
-                parameters = start["Parameters"]["Parameters"]
-                return parameters.get("metaflow.owner"), parameters.get(
-                    "metaflow.production_token"
-                )
+                state_machine_tags = client.get_tags(state_machine_arn=state_machine_arns[0])
+                return state_machine_tags.get(CustomStepFunctionTags.flow_owner_key), state_machine_tags.get(CustomStepFunctionTags.flow_production_token_key)
+                # definition = json.loads(workflow["definition"])
+                # start_state_name = definition.get("StartAt", "start")
+                # start = definition["States"][start_state_name]
+                # parameters = start["Parameters"]["Parameters"]
+                # return parameters.get("metaflow.owner"), parameters.get(
+                #     "metaflow.production_token"
+                # )
             except KeyError:
                 raise StepFunctionsException(
                     "An existing non-metaflow "
@@ -347,7 +352,7 @@ class CustomStepFunctions(object):
                     "Functions. Please modify the "
                     "name of this flow or delete your "
                     "existing workflow on AWS Step "
-                    "Functions." % name
+                    "Functions." % flow_name
                 )
         return None
 

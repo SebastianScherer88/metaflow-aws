@@ -20,6 +20,8 @@ class CustomStepFunctionTags(StrEnum):
 
     flow_user_key = "metaflow/user"
     flow_user_value = "SFN"
+    
+    flow_production_token_key = "metaflow/production_token"
 
     flow_name_key = "metaflow/flow_name"
 
@@ -59,7 +61,7 @@ class CustomStepFunctionsClient(object):
         from metaflow.plugins.aws.aws_client import get_aws_client
 
         self._client = get_aws_client("stepfunctions")
-        self._tagging_client = get_aws_client("resourcegoupstaggingapi")
+        self._tagging_client = get_aws_client("resourcegroupstaggingapi")
 
     # def search(self, name: str):
     #     paginator = self._client.get_paginator("list_state_machines")
