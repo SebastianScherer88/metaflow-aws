@@ -111,7 +111,7 @@ class CustomStepFunctionsDeployedFlow(DeployedFlow):
         """
         client = CustomStepFunctionsClient()
         deployment_tags = client.get_tags(identifier)
-        parameters = client.get_parameters(identifier)
+        parameters = client.get_all_flow_parameters(identifier)
 
         if deployment_tags is None:
             raise MetaflowException("No deployed flow found for: %s" % identifier)
@@ -122,7 +122,7 @@ class CustomStepFunctionsDeployedFlow(DeployedFlow):
         # these two only exist if @project decorator is used..
         branch_name = deployment_tags.get(CustomStepFunctionTags.flow_branch_key, None)
         project_name = deployment_tags.get(
-            CustomStepFunctionTags.flow_project_name_key, None
+            CustomStepFunctionTags.flow_project_key, None
         )
 
         project_kwargs = {}
@@ -139,6 +139,8 @@ class CustomStepFunctionsDeployedFlow(DeployedFlow):
             flow_name=flow_name, param_info=parameters, project_name=project_name
         )
 
+        state_machine_name = identifier.split(":")[-1]
+
         with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as fake_flow_file:
             with open(fake_flow_file.name, "w") as fp:
                 fp.write(fake_flow_file_contents)
@@ -152,16 +154,11 @@ class CustomStepFunctionsDeployedFlow(DeployedFlow):
             else:
                 d = Deployer(
                     fake_flow_file.name, env={"METAFLOW_USER": username}
-                ).step_functions(name=flow_name)
+                ).step_functions(name=state_machine_name)
 
-            d.name = identifier.split(":")[-1]
+            d.name = state_machine_name
             d.flow_name = flow_name
 
-            if d.name != d.flow_name:
-                raise ValueError(
-                    f"Resolved flow name {d.flow_name} is not equal to "
-                    f"resolved deployment name {d.name}."
-                )
             if metadata is None:
                 d.metadata = get_metadata()
             else:

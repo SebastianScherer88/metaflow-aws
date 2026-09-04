@@ -220,13 +220,15 @@ class CustomStepFunctions(object):
         (where applicable).
 
         Args:
-            flow_name (str): _description_
+            flow_name (str): The name of the deployed flow's state machine.
 
         Raises:
-            StepFunctionsException: _description_
+            StepFunctionsException: Raised if the specified state machine is
+                not managed by metaflow, or does not exist.
 
         Returns:
-            _type_: _description_
+            tuple[dict | None, dict | None]: Response data of schedule and
+                state machine deletion api calls.
         """
         # Always attempt to delete the event bridge rule.
         schedule_deleted = EventBridgeClient(flow_name).delete()
@@ -384,11 +386,13 @@ class CustomStepFunctions(object):
                 state_machine_tags = client.get_tags(
                     state_machine_arn=state_machine_arns[0]
                 )
+                production_token = client.get_production_token(
+                    state_machine_arn=state_machine_arns[0]
+                )
+
                 return state_machine_tags.get(
                     CustomStepFunctionTags.flow_owner_key
-                ), state_machine_tags.get(
-                    CustomStepFunctionTags.flow_production_token_key
-                )
+                ), production_token
             except KeyError:
                 raise StepFunctionsException(
                     "An existing non-metaflow "
@@ -408,7 +412,6 @@ class CustomStepFunctions(object):
 
         tags = {
             CustomStepFunctionTags.resource_owner_key: CustomStepFunctionTags.resoure_owner_value,
-            CustomStepFunctionTags.flow_production_token_key: self.production_token,
             CustomStepFunctionTags.flow_owner_key: self.username,
             CustomStepFunctionTags.flow_user_key: "SFN",
             CustomStepFunctionTags.flow_name_key: self.flow.name,

@@ -22,8 +22,6 @@ class CustomStepFunctionTags(StrEnum):
     flow_user_key = "metaflow/user"
     flow_user_value = "SFN"
 
-    flow_production_token_key = "metaflow/production_token"
-
     flow_name_key = "metaflow/flow_name"
 
     flow_owner_key = "metaflow/owner"
@@ -97,7 +95,66 @@ class CustomStepFunctionsClient(object):
         except self._client.exceptions.StateMachineDoesNotExist:
             return None
 
-    def get_parameters(
+    def get_environment_override(
+        self, state_machine_arn: str, environment_variable_name: str
+    ) -> list[dict[str, str]]:
+        """Retrieves the value of the specified environment variable from the
+        metaflow flows state machine definition, specifically the StartAt
+        step's Parameters.ContainerOverrides.Environment seciont.
+
+        Args:
+            state_machine_arn (str): The ARN of the state machine.
+            environment_variable_name (str): The name of the environment
+                variable to extract the spec for.
+
+        Returns:
+            list[dict[str,str]]: The environment variable spec dict with keys
+                'Name' and 'Value', if the environment variable was present in
+                the override section. If not, returns an empty list.
+        """
+
+        state_machine_description: dict = self._client.describe_state_machine(
+            stateMachineArn=state_machine_arn,
+        )
+        definition = json.loads(state_machine_description["definition"])
+        start_state_name = definition.get("StartAt", "start")
+        start_state = definition["States"][start_state_name]
+        start_state_environment = start_state["Parameters"]["ContainerOverrides"][
+            "Environment"
+        ]
+        environment_variable_spec = [
+            env_spec
+            for env_spec in start_state_environment
+            if env_spec["Name"] == environment_variable_name
+        ]
+
+        return environment_variable_spec
+
+    def get_production_token(self, state_machine_arn: str) -> str | None:
+        """Retrieves the production token  from the deployed flow's state
+        machine definition.
+
+        Args:
+            state_machine_arn (str): The ARN of the state machine.
+
+        Returns:
+            str | None: The production token, if present in the definition.
+                Otherwise returns None.
+        """
+
+        metaflow_produciton_token_spec = self.get_environment_override(
+            state_machine_arn=state_machine_arn,
+            environment_variable_name="METAFLOW_PRODUCTION_TOKEN",
+        )
+
+        if metaflow_produciton_token_spec:
+            token = metaflow_produciton_token_spec[0]["value"]
+        else:
+            token = None
+
+        return token
+
+    def get_all_flow_parameters(
         self, state_machine_arn: str
     ) -> dict[str, dict[str, Any]] | None:
         """Retrieves the metaflow parameter context required to reconstruct
@@ -112,23 +169,13 @@ class CustomStepFunctionsClient(object):
                 parameters meta data to re-construct a DeployedFlow object.
         """
 
-        state_machine_description: dict = self._client.describe_state_machine(
-            stateMachineArn=state_machine_arn,
+        metaflow_all_parameters_spec = self.get_environment_override(
+            state_machine_arn=state_machine_arn,
+            environment_variable_name="METAFLOW_ALL_PARAMETERS",
         )
-        definition = json.loads(state_machine_description["definition"])
-        start_state_name = definition.get("StartAt", "start")
-        start_state = definition["States"][start_state_name]
-        start_state_environment = start_state["Parameters"]["ContainerOverrides"][
-            "Environment"
-        ]
-        parameters_spec = [
-            env_spec
-            for env_spec in start_state_environment
-            if env_spec["Name"] == "METAFLOW_ALL_PARAMETERS"
-        ]
 
-        if parameters_spec:
-            parameters = json.loads(parameters_spec[0]["Value"])
+        if metaflow_all_parameters_spec:
+            parameters = json.loads(metaflow_all_parameters_spec[0]["Value"])
         else:
             parameters = {}
 
@@ -147,8 +194,17 @@ class CustomStepFunctionsClient(object):
         return response["executionArn"]
 
     def list_arns(self, flow_name: str | None = None) -> Iterator[str]:
-        """Lists the arns the state machines managed by metaflow and inside
-        the optional name scope."""
+        """Lists the arns of the state machines managed by metaflow and inside
+        the optional name scope.
+
+        Args:
+            flow_name (str | None, optional): The name of the state machine.
+                Defaults to None.
+
+        Yields:
+            Iterator[str]: The ARNs of the state machines inside the search
+                scope.
+        """
 
         # build filter tags
         tag_filters = [
@@ -158,25 +214,28 @@ class CustomStepFunctionsClient(object):
             }
         ]
 
-        if flow_name is not None:
-            tag_filters.append(
-                {
-                    "Key": str(CustomStepFunctionTags.flow_name_key),
-                    "Values": [flow_name],
-                }
-            )
-
-        # retrieve the arns of all state amchines that are
-        # - managed by metaflow
-        # - (optional) carry the specified flow name
+        # retrieve the arns and names of all state machines that are managed
+        # by metaflow
         paginator = self._tagging_client.get_paginator("get_resources")
+        matched_state_machines: list[tuple[str, str]] = []
 
         for page in paginator.paginate(
             ResourceTypeFilters=["states:stateMachine"],
             TagFilters=tag_filters,
         ):
-            for resource in page["ResourceTagMappingList"]:
-                yield resource["ResourceARN"]
+            for resource in page["ResourceTapMappingList"]:
+                resource_arn = resource["ResourceARN"]
+                resource_name = resource_arn.split(":")[-1]
+                matched_state_machines.append((resource_arn, resource_name))
+
+        # if a name is provided, filter down to the state machines matching it
+        if flow_name is not None:
+            matched_state_machines = [
+                msm for msm in matched_state_machines if msm[1] == flow_name
+            ]
+
+        for matched_state_machine in matched_state_machines:
+            yield matched_state_machine[0]
 
     def list_executions(
         self, state_machine_arn: str, states: list[CustomStepFunctionsState]

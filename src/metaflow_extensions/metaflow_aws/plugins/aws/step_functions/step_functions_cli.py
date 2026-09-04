@@ -549,7 +549,9 @@ def trigger(obj, run_id_file=None, deployer_attribute_file=None, **kwargs):
         if kwargs.get(param.name.replace("-", "_").lower()) is not None
     }
 
-    exectution_are = CustomStepFunctions.create_execution(obj.flow.name, params)
+    exectution_are = CustomStepFunctions.create_execution(
+        obj.state_machine_name, params
+    )
 
     id = exectution_are.split(":")[-1]
     run_id = "sfn-" + id
@@ -632,7 +634,7 @@ def list_runs(
         states.append(CustomStepFunctionsState.timed_out)
     if aborted:
         states.append(CustomStepFunctionsState.aborted)
-    executions = CustomStepFunctions.list_executions(obj.flow.name, states)
+    executions = CustomStepFunctions.list_executions(obj.state_machine_name, states)
     found = False
     for execution in executions:
         found = True
@@ -716,7 +718,7 @@ def delete(obj, authorize=None):
         ),
         bold=True,
     )
-    schedule_deleted, sfn_deleted = CustomStepFunctions.delete(obj.flow.name)
+    schedule_deleted, sfn_deleted = CustomStepFunctions.delete(obj.state_machine_name)
 
     if schedule_deleted:
         obj.echo(
@@ -777,7 +779,9 @@ def terminate(obj, run_id, authorize=None):
         bold=True,
     )
 
-    terminated = CustomStepFunctions.terminate_execution(obj.flow.name, execution_arn)
+    terminated = CustomStepFunctions.terminate_execution(
+        obj.state_machine_name, execution_arn
+    )
     if terminated:
         obj.echo("\nRun terminated at %s." % terminated.get("stopDate"))
 
