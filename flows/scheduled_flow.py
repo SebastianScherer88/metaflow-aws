@@ -1,11 +1,12 @@
 import datetime
 
-from metaflow import FlowSpec, schedule, step
+from metaflow import FlowSpec, project, schedule, step
 from metaflow.parameters import Parameter
 
 
 # token: basicflow-0-sudm
-@schedule(cron="* * * * ? *")
+@schedule(cron="0 * * * ? *")
+@project(name="test_project")
 class ScheduledFlow(FlowSpec):
     greeting_name = Parameter(
         "greeting_name", help="Who to greet.", type=str, default="Sebastian"

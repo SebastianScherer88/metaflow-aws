@@ -383,16 +383,14 @@ class CustomStepFunctions(object):
         state_machine_arns = list(client.list_arns(flow_name=flow_name))
         if state_machine_arns:
             try:
-                state_machine_tags = client.get_tags(
+                flow_owner = client.get_tags(
                     state_machine_arn=state_machine_arns[0]
-                )
+                ).get(CustomStepFunctionTags.flow_owner_key)
                 production_token = client.get_production_token(
                     state_machine_arn=state_machine_arns[0]
                 )
 
-                return state_machine_tags.get(
-                    CustomStepFunctionTags.flow_owner_key
-                ), production_token
+                return flow_owner, production_token
             except KeyError:
                 raise StepFunctionsException(
                     "An existing non-metaflow "

@@ -148,7 +148,7 @@ class CustomStepFunctionsClient(object):
         )
 
         if metaflow_produciton_token_spec:
-            token = metaflow_produciton_token_spec[0]["value"]
+            token = metaflow_produciton_token_spec[0]["Value"]
         else:
             token = None
 
@@ -223,7 +223,7 @@ class CustomStepFunctionsClient(object):
             ResourceTypeFilters=["states:stateMachine"],
             TagFilters=tag_filters,
         ):
-            for resource in page["ResourceTapMappingList"]:
+            for resource in page["ResourceTagMappingList"]:
                 resource_arn = resource["ResourceARN"]
                 resource_name = resource_arn.split(":")[-1]
                 matched_state_machines.append((resource_arn, resource_name))

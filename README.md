@@ -78,6 +78,31 @@ As seen in the `.devcontainer/devcontainer.json` configuration, it relies on an
 ...
 ```
 
+Change into the top level directory. To create a uv-managed virtual environment
+ with `python=3.14`, run
+
+```bash
+uv venv --python=3.14
+```
+
+To activate the virtual environment, run
+
+```bash
+source .venv/bin/activate
+```
+
+To build the metaflow-aws extension, run:
+
+```bash
+uv build
+```
+
+To sync the activate virtual environment, run:
+
+```bash
+uv sync
+```
+
 ## Infrastructure
 
 Change into the `infrastructure` directory. This stack deploys:
@@ -108,13 +133,12 @@ pulumi up
 Then run
 
 ```bash
-pulumi stack output metaflow_config --json > ../.metaflowconfig/config.json
-export METAFLOW_HOME=/workspace/.metaflowconfig
+pulumi stack output metaflow_config --json > ../../root/.metaflowconfig/config.json
 ```
 
-to generate the metaflow config file. It will have the correct AWS references
-to point your local metaflow client to the AWS cloud resources you just 
-provisioned.
+to generate the metaflow config file and export it to the container's 
+home directory. It will configure your local metaflow client to point to the
+ AWS resources you just provisioned.
 
 To connect to the metaflow UI exposed through the alb, retrieve its external url
 from the stack outputs:
@@ -130,7 +154,13 @@ You should see something like this, minus the flows:
 
 ## Test
 
-Change into the `flows` directory.
+Change into the `flows` directory. To tell metaflow to use the `step-functions`
+backend as the default implementation when using the 
+`DeployedFlow.from_deployment` method, run
+
+```bash
+export METAFLOW_DEFAULT_FROM_DEPLOYMENT_IMPL=step-functions
+```
 
 To test the infrastructure, you can run these flows
 - locally, 
